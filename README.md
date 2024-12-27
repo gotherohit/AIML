@@ -17,11 +17,11 @@
     <li>Traditional ML models</li>
 </ul>
 
-<h3><p>
+<h4><p>
 Apart from above core topics, We will also cover additonal packages that will be useful while working with AI/ML workflows:<br>
 Ex: Pandas, Numpy, Matplotlib, Scikit-Learn etc.<br>
-</p></h3>
+</p></h4>
 
-<h3><p>
+<h4><p>
 Most of the code will be in Python on Jupyter Notebook.
-</p></h3> :books:
+</p></h4> :books:
