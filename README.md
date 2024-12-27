@@ -23,5 +23,5 @@ Ex: Pandas, Numpy, Matplotlib, Scikit-Learn etc.<br>
 </p></h4>
 
 <h4><p>
-Most of the code will be in Python on Jupyter Notebook.
-</p></h4> :books:
+Most of the code will be in Python on Jupyter Notebook. :books:
+</p></h4> 
