@@ -1,6 +1,6 @@
 <p style="font-size: 25px;">
-<b>This section demonstrate part of my journey in order to master Deep Learning.<br>
-Goal of this section is to replicate already reasearched model, so that we can further our understanding of the subject :books:</b>
+<b>This section demonstrates part of my journey in order to master Deep Learning.<br>
+Goal of this section is to replicate already reasearched models, so that we can further our understanding of the subject :books:</b>
 </p>
 
 
