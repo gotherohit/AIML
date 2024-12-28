@@ -18,3 +18,5 @@ Goal of this section is to replicate already reasearched models, so that we can 
     <li>We will most often try creating simpler version to limit computation cost, as models will be trained on local machine.</li> 
     <li>Source refrences will be added at the end for the insipration/adaptation of the code.</li> 
 </ul>
+
+<h4>This repository is licensed under the MIT License. See the LICENSE file for more information.</h4>
