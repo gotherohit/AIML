@@ -25,3 +25,5 @@ Ex: Pandas, Numpy, Matplotlib, Scikit-Learn etc.<br>
 <h4><p>
 Most of the code will be in Python on Jupyter Notebook. :books:
 </p></h4> 
+
+<h4>This repository is licensed under the MIT License. See the LICENSE file for more information.</h4>
