@@ -1,4 +1,4 @@
-# Learning AI and ML :school: :1234:
+# Learning AI and ML ![Deep learning](/Assets/images/Deeo_learning_fun_image.png)
 
 <p style="font-size: 25px;">
 <b>This repository is created as a companion to my journey towards Learning/Exploring AIML world</b>
