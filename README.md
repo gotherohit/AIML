@@ -1,4 +1,4 @@
-![Deep learning](/Assets/images/Deep_learning_fun_image.png)
+![Deep learning](/images/Deep_learning_fun_image.png)
 
 # Learning AI and ML 
 
