@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>How LLMs see images: pixels, patches and tokens</title>
+<meta name="description" content="How a language model reads a photo: patches, the vision encoder, CLIP, the projector and image tokens, with real numbers from Qwen2.5-VL, Gemma 3 and CLIP run on a laptop.">
+<link rel="canonical" href="https://gotherohit.github.io/AIML/explainers/vision/">
+<meta property="og:type" content="article"><meta property="og:title" content="How LLMs see images: pixels, patches and tokens">
+<meta property="og:description" content="How a language model reads a photo: patches, the vision encoder, CLIP, the projector and image tokens, with real numbers from Qwen2.5-VL, Gemma 3 and CLIP run on a laptop."><meta property="og:url" content="https://gotherohit.github.io/AIML/explainers/vision/">
+<meta property="og:image" content="https://gotherohit.github.io/AIML/images/covers/vision.jpg"><meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x2='1' y2='1'%3E%3Cstop stop-color='%2335d6c0'/%3E%3Cstop offset='1' stop-color='%23ff6a2b'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../assets/site.css"><style>:root{--accent:#ffb020;--accent2:#7c9dff}.prose .sf{color:#ffb020}.prose .cb{color:#7c9dff}.prose .ok{color:#56d39a}.prose .bad{color:#ff7a7a}.prose .dim{color:var(--dim)}.prose .lead{font-size:19px;color:var(--fg2)}.prose .big{font-size:20px;line-height:1.45;font-weight:600;color:var(--fg);margin:8px 0}.prose h2 .n{display:block;font:700 12.5px var(--mono);color:var(--accent);letter-spacing:.12em;margin-bottom:8px}.prose .box.blue{border-left-color:#4d7cff}.prose .box.warn{border-left-color:#ff7a7a}.prose .box .t,.prose .tool .t{font:700 12px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:#ffb020;margin-bottom:8px}.prose .box.blue .t{color:#7c9dff}.prose .box.warn .t{color:#ff9a9a}.prose .flow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:18px 0}.prose .flow span{font:700 13.5px var(--mono);padding:8px 12px;border:2px solid #ffb020;background:#2a1f08;border-radius:8px}.prose .flow span.t{border-color:#4d7cff;background:#121a33}.prose .flow i{color:#ffb020;font-style:normal}.prose td.m{font-family:var(--mono);font-size:14px}.prose .tool{background:#101217;border:1px solid rgba(255,176,32,.45);border-radius:12px;padding:18px 20px;margin:24px 0}.prose .tool .row{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:8px 0;font:15px var(--sans);color:var(--fg2)}.prose input[type=number]{width:100px;background:#0c0d10;color:var(--fg);border:1px solid var(--line2);border-radius:8px;padding:6px 8px;font:15px var(--mono)}.prose .tool button{background:#2a1f08;color:var(--fg);border:1px solid #ffb020;border-radius:8px;padding:6px 12px;font:600 13.5px var(--mono);cursor:pointer}.prose .tool button.on{background:#ffb020;color:#17120a}.prose .out{font:700 16px var(--mono);color:#ffb020}.prose .imgwrap{position:relative;max-width:406px;margin:12px 0}.prose .imgwrap img{width:100%;height:auto;margin:0;border:0;border-radius:8px}.prose .imgwrap canvas{position:absolute;inset:0;width:100%;height:100%;max-width:none;margin:0;border:0;background:none;border-radius:8px}.prose .mini{display:grid;grid-template-columns:repeat(3,1fr);gap:2px;max-width:300px;margin:12px 0}.prose .mini div{padding:10px 0;text-align:center;font:700 13px var(--mono);background:#1b1d22}.prose .mini div.d{background:#3a2a07;color:#ffb020}.prose .mini div.h{background:transparent;color:var(--dim);font-weight:400}</style>
+</head><body>
+<header class="topbar"><div class="in">
+<a class="brand" href="../../"><span class="mark">RK</span>Rohit Kumar Singh</a>
+<nav><a class="txt" href="../../#explainers">Explainers</a><a class="txt" href="../../#projects">Projects</a><a class="txt" href="../../#about">About</a>
+<a class="icon" data-channel target="_blank" rel="noopener" aria-label="YouTube"><svg viewBox="0 0 24 24"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.6 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg></a>
+<a class="icon" href="https://www.linkedin.com/in/rohit-kumar-singh-621818a9/" target="_blank" rel="noopener" aria-label="LinkedIn"><svg viewBox="0 0 24 24"><path d="M20.4 20.5h-3.6v-5.6c0-1.3 0-3-1.8-3s-2.1 1.4-2.1 2.9v5.7H9.3V9h3.4v1.6h.1c.5-.9 1.6-1.8 3.4-1.8 3.6 0 4.3 2.4 4.3 5.5v6.2zM5.3 7.4a2.1 2.1 0 1 1 0-4.1 2.1 2.1 0 0 1 0 4.1zM7.1 20.5H3.5V9h3.6v11.5zM22.2 0H1.8C.8 0 0 .8 0 1.7v20.6c0 .9.8 1.7 1.8 1.7h20.4c1 0 1.8-.8 1.8-1.7V1.7C24 .8 23.2 0 22.2 0z"/></svg></a>
+<a class="icon" href="https://github.com/gotherohit/AIML" target="_blank" rel="noopener" aria-label="GitHub"><svg viewBox="0 0 24 24"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.3-3.1-.2-.4-.6-1.6 0-3.2 0 0 1-.3 3.4 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.2.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.5.4.9 1.1.9 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"/></svg></a></nav>
+</div></header>
+<div class="article-head">
+<div class="crumbs"><a href="../../#explainers">Explainers</a> /</div>
+<h1>How LLMs see images: pixels, patches and tokens</h1>
+<p class="dek">A language model never sees pixels. It reads vectors made from small squares of the image, by an encoder trained to put pictures near the words that describe them. Here is every step, with real numbers from Qwen2.5-VL, Gemma 3 and CLIP.</p>
+<div class="tags" style="margin-bottom:16px"><span class="tag">Vision LLMs</span><span class="tag">CLIP</span><span class="tag">Qwen2.5-VL</span><span class="tag">Real experiment</span></div>
+<div class="byline"><span>By <b>Rohit Kumar Singh</b></span><span>October 2026</span><span>26 min read</span></div>
+</div>
+<div class="videos two">
+<div class="yt" data-video="vision-long" data-label="Full video · 18 min" data-title="LLMs can't see pixels. So how do they read images?" data-cover="../../images/covers/vision.jpg"></div>
+<div class="yt vertical" data-video="vision-short" data-label="Short" data-title="To an AI, this cat is 1,015 tokens" data-cover="../../images/covers/vision-short.jpg"></div>
+</div>
+<div class="layout">
+<details class="toc"><summary>Contents</summary><ol><li><a href="#the-whole-answer-in-4-sentences">The whole answer in 4 sentences</a></li><li><a href="#an-llm-s-real-input-is-vectors-not-ids">An LLM&#x27;s real input is vectors, not IDs</a></li><li><a href="#what-a-photo-is-to-a-computer">What a photo is to a computer</a></li><li><a href="#patches-an-image-s-words">Patches: an image&#x27;s &quot;words&quot;</a></li><li><a href="#position-where-was-this-patch">Position: where was this patch?</a></li><li><a href="#the-vision-encoder-a-transformer-whose-tokens-ar">The vision encoder: a transformer whose tokens are patches</a></li><li><a href="#clip-who-taught-the-encoder-what-a-cat-is">CLIP: who taught the encoder what a cat is?</a></li><li><a href="#the-projector-the-adapter-between-two-networks">The projector: the adapter between two networks</a></li><li><a href="#from-pixels-to-image-tokens-with-only-2-d-matrix">From pixels to image tokens, with only 2-D matrix multiplication</a></li><li><a href="#inside-the-llm-the-image-becomes-part-of-the-pro">Inside the LLM: the image becomes part of the prompt</a></li><li><a href="#training-in-stages-why-freeze-things">Training in stages: why freeze things?</a></li><li><a href="#resolution-is-a-budget-real-experiments">Resolution is a budget (real experiments)</a></li><li><a href="#what-an-image-costs-in-an-api">What an image costs in an API</a></li><li><a href="#other-ways-to-wire-it">Other ways to wire it</a></li><li><a href="#why-it-still-fails">Why it still fails</a></li><li><a href="#common-confusions-to-avoid">Common confusions to avoid</a></li><li><a href="#check-yourself">Check yourself</a></li><li><a href="#glossary">Glossary</a></li></ol></details>
+<article class="prose">
+<h2 id="the-whole-answer-in-4-sentences"><span class="n">STEP 0</span>The whole answer in 4 sentences</h2>
+<div class="box key">
+<p class="big">1. An LLM doesn't really read words; it reads <span class="sf">vectors</span> (lists of numbers) that words are turned into.</p>
+<p class="big">2. So to "show" it an image, cut the image into small squares (<span class="sf">patches</span>) and turn each square into a vector.</p>
+<p class="big">3. A separate network, the <span class="sf">vision encoder</span>, trained on millions of images with captions, makes those vectors meaningful, and a small <span class="sf">projector</span> resizes them to the LLM's format.</p>
+<p class="big">4. Those vectors (<span class="sf">image tokens</span>) go into the prompt next to the word vectors, and the LLM reads them like any other token.</p>
+</div>
+<div class="flow"><span>photo</span><i>→</i><span>patches</span><i>→</i><span>vision encoder</span><i>→</i><span>projector</span><i>→</i><span>image tokens</span><i>→</i><span class="t">LLM</span><i>→</i><span class="t">answer</span></div>
+<p>If you remember only this, you have the core idea. Everything below is "why" and "how exactly".</p>
+
+<h2 id="an-llm-s-real-input-is-vectors-not-ids"><span class="n">STEP 1 · WHAT YOU ALREADY KNOW, LOOKED AT CAREFULLY</span>An LLM's real input is vectors, not IDs</h2>
+<p>You know text becomes tokens and tokens have IDs. The step people skip: the very first thing the model does with an ID is a <b>table lookup</b>.</p>
+<ol>
+<li>"Describe this photo of a cat." → tokenizer → <code>74785, 419, 6548, 315, 264, 8251, 13</code> (7 tokens; " cat" is <b>8,251</b>). Real output of <code>llama-tokenize</code> on Qwen2.5-VL.</li>
+<li>The model has an <b>embedding table</b>: one row per token in the vocabulary. For Qwen2.5-VL 3B it is <b>151,936 rows × 2,048 numbers</b> (in the file: <code>token_embd.weight [2048, 151936]</code>).</li>
+<li>ID 8,251 means only "take row 8,251". Out comes a vector of 2,048 numbers.</li>
+<li>Every layer after that works on vectors. The IDs are never seen again.</li>
+</ol>
+<div class="box blue"><div class="t">Reading the shape [2048, 151936]</div>
+GGUF (llama.cpp's format) lists a tensor's sizes <b>innermost first</b>: the first number is the length of one row, the last is how many rows there are. So <code>[2048, 151936]</code> means <b>151,936 rows, each 2,048 numbers long</b>. PyTorch / Hugging Face write the same tensor the other way round: <code>[151936, 2048]</code>. Sanity check: the vocabulary has 151,936 tokens (the tokenizer in the same file lists exactly 151,936), and 2,048 is the model's hidden size, so the rows must be the tokens.</div>
+<div class="box key"><div class="t">The key idea of the whole topic</div>
+The model doesn't need an ID. It needs a <b>vector of the right size, in the "space" it has learned</b>. If we can manufacture such vectors from an image, we can put them in the sequence directly, without any ID. Gemma 3's report calls these <b>soft tokens</b> (soft = not a discrete entry in the vocabulary).</div>
+<h2 id="what-a-photo-is-to-a-computer"><span class="n">STEP 2</span>What a photo is to a computer</h2>
+<p>A grid of pixels; each pixel is 3 numbers (red, green, blue, 0 to 255). A real pixel from the cat's eye (at 196 × 224 size): <code>R 34, G 79, B 105</code>: dark blue.</p>
+<p>A 1920 × 1080 photo = 2,073,600 pixels × 3 = <b>6,220,800 numbers</b>.</p>
+<h3>Why not one token per pixel?</h3>
+<ul>
+<li><b>Cost.</b> In attention, each token compares itself with every other token, so cost grows with the <i>square</i> of the length. 2,073,600² ≈ 4.3 trillion pairs per layer. Impossible in practice.</li>
+<li><b>Meaning.</b> One pixel is just a colour. "Orange" could be cat fur, a sunset, a pizza. Meaning is in groups of pixels: edges, textures, shapes.</li>
+</ul>
+<p>So we want <b>fewer, richer</b> pieces. That's exactly what patches are.</p>
+
+<h2 id="patches-an-image-s-words"><span class="n">STEP 3</span>Patches: an image's "words"</h2>
+<p>The 2020 Google paper <i>An Image is Worth 16x16 Words</i> introduced the <b>Vision Transformer (ViT)</b>. The trick is almost embarrassingly simple:</p>
+<ol>
+<li>Cut the image into a grid of P × P squares (P = 16 in that paper; <b>14</b> in Qwen2.5-VL and Gemma 3).</li>
+<li>Take one square: 14 × 14 pixels × 3 colours = <b>588 numbers</b>. Lay them out in one row ("flatten").</li>
+<li>Multiply that row by one learned matrix → a vector of <b>1,280</b> numbers (Qwen's encoder width). This is the <b>patch embedding</b>. In the file: <code>v.patch_embd.weight [14, 14, 3, 1280]</code>: patch height, width, colours, output size.</li>
+</ol>
+<div class="box blue"><div class="t">Why is the matrix stored as [14, 14, 3, 1280]?</div>
+It is the same 588 × 1,280 matrix, just kept in the patch's shape instead of flattened. Think of it as <b>1,280 little filters</b>, each one a 14 × 14 × 3 block of weights (588 numbers). Output number <i>k</i> of a patch = multiply the patch's 588 pixel values by filter <i>k</i>'s 588 weights, element by element, and add them up. Do that for all 1,280 filters and you get the 1,280-number vector.<br/><br/>
+Flatten each filter and stack them side by side and you have exactly a 588 × 1,280 matrix: "flatten, then multiply by a matrix" and "slide 1,280 filters over the image, 14 pixels at a time" are the same arithmetic. Code implements it as a convolution with kernel 14 and stride 14 because that does it for every patch at once, and stores the weights in that 4-D shape (again innermost first: 14 wide, 14 high, 3 colours, 1,280 filters).</div>
+<div class="box key"><div class="t">The maths, on a toy image you can check by hand</div>
+<p>Nothing is ever multiplied "in 4-D". Two separate things happen: <b>cutting</b> (just rearranging numbers, no maths) and then <b>one ordinary 2-D matrix multiplication</b>.</p>
+<p><b>Toy image:</b> 4 × 4 pixels, grey only (1 number per pixel), patches of 2 × 2, and 2 filters instead of 1,280.</p>
+<div class="tbl"><table style="width:auto"><tr><td class="m">1</td><td class="m">2</td><td class="m" style="border-left:2px solid #ffb020">3</td><td class="m">4</td></tr><tr><td class="m">5</td><td class="m">6</td><td class="m" style="border-left:2px solid #ffb020">7</td><td class="m">8</td></tr><tr style="border-top:2px solid #ffb020"><td class="m">9</td><td class="m">10</td><td class="m" style="border-left:2px solid #ffb020">11</td><td class="m">12</td></tr><tr><td class="m">13</td><td class="m">14</td><td class="m" style="border-left:2px solid #ffb020">15</td><td class="m">16</td></tr></table></div>
+<p><b>Step 1, cut and flatten</b> (no maths): each 2 × 2 patch becomes one row of 4 numbers, read left to right, top to bottom. 4 patches give a 4 × 4 matrix <b>X</b>:</p>
+<div class="tbl"><table style="width:auto"><tr><th>patch</th><th colspan="4">its pixels in a row</th></tr><tr><td>A (top left)</td><td class="m">1</td><td class="m">2</td><td class="m">5</td><td class="m">6</td></tr><tr><td>B (top right)</td><td class="m">3</td><td class="m">4</td><td class="m">7</td><td class="m">8</td></tr><tr><td>C (bottom left)</td><td class="m">9</td><td class="m">10</td><td class="m">13</td><td class="m">14</td></tr><tr><td>D (bottom right)</td><td class="m">11</td><td class="m">12</td><td class="m">15</td><td class="m">16</td></tr></table></div>
+<p><b>Step 2, the filters.</b> Each filter is a 2 × 2 block of weights, the same shape as a patch, so it is stored as [2, 2, 2 filters] (like Qwen's [14, 14, 3, 1280]). Flatten each filter in the same order and stand it up as a column: a 4 × 2 matrix <b>W</b>.</p>
+<div class="tbl"><table style="width:auto"><tr><th></th><th>filter 1 "brightness"</th><th>filter 2 "left minus right"</th></tr><tr><td>top-left weight</td><td class="m">1</td><td class="m">1</td></tr><tr><td>top-right weight</td><td class="m">1</td><td class="m">−1</td></tr><tr><td>bottom-left weight</td><td class="m">1</td><td class="m">1</td></tr><tr><td>bottom-right weight</td><td class="m">1</td><td class="m">−1</td></tr></table></div>
+<p><b>Step 3, multiply</b> X (4 × 4) · W (4 × 2) = a 4 × 2 result: one row per patch, one number per filter. Patch A with filter 1: 1·1 + 2·1 + 5·1 + 6·1 = <b>14</b>. With filter 2: 1·1 + 2·(−1) + 5·1 + 6·(−1) = <b>−2</b>.</p>
+<div class="tbl"><table style="width:auto"><tr><th>patch</th><th>filter 1</th><th>filter 2</th></tr><tr><td>A</td><td class="m sf">14</td><td class="m sf">−2</td></tr><tr><td>B</td><td class="m sf">22</td><td class="m sf">−2</td></tr><tr><td>C</td><td class="m sf">46</td><td class="m sf">−2</td></tr><tr><td>D</td><td class="m sf">54</td><td class="m sf">−2</td></tr></table></div>
+<p>Each patch is now a vector of 2 numbers: that is its patch embedding. (Filter 2 says −2 everywhere because in this toy image every patch is 1 darker on its left than on its right.)</p>
+<p><b>Colour</b> changes only the row length: each pixel brings 3 numbers (R, G, B) instead of 1, so a 2 × 2 colour patch is a row of 2 × 2 × 3 = 12 numbers, and each filter has 12 weights. Same multiplication.</p>
+<p><b>Real Qwen, same three steps:</b></p>
+<div class="tbl"><table style="width:auto"><tr><th>step</th><th>shapes</th></tr>
+<tr><td>image</td><td class="m">980 × 812 × 3 (height × width × colour)</td></tr>
+<tr><td>cut into 14 × 14 patches</td><td class="m">70 × 58 patches, each 14 × 14 × 3</td></tr>
+<tr><td>flatten each patch to a row → X</td><td class="m">4,060 × 588</td></tr>
+<tr><td>filters [14, 14, 3, 1280] flattened → W</td><td class="m">588 × 1,280</td></tr>
+<tr><td>X · W</td><td class="m sf">4,060 × 1,280: one 1,280-number vector per patch</td></tr></table></div>
+<p class="dim">The only rule: a patch and a filter must be flattened in the same order, so pixel (row, column, colour) meets its own weight. Code that does this as a "convolution with kernel 14, stride 14" computes exactly these numbers, just without building X explicitly.</p></div>
+<p>Compare with text: a word → a row of the embedding table. A patch → its pixels × a matrix. Both end as a vector. That is why the paper says an image is "worth 16 × 16 words".</p>
+<div class="tool"><div class="t">Try it · patch grid on the real cat (812 × 980, the size Qwen was given)</div>
+<div class="row"><button data-p="14" class="on">14 px patches</button><button data-p="28">28 px (after 2×2 merge)</button><button data-p="56">56 px</button></div>
+<div class="imgwrap"><img src="img/cat.jpg" alt="cat" /><canvas id="gridc" width="812" height="980"></canvas></div>
+<p class="out" id="gridout"></p>
+</div>
+<div class="tool"><div class="t">Calculator · how many patches and tokens</div>
+<div class="row">width <input type="number" id="cw" value="812" /> height <input type="number" id="ch" value="980" /> patch <input type="number" id="cp" value="14" /></div>
+<p class="out" id="cout"></p>
+<p class="dim">Qwen first resizes width and height to multiples of 28 so the 2 × 2 merge (step 7) fits exactly.</p>
+</div>
+<h2 id="position-where-was-this-patch"><span class="n">STEP 4</span>Position: where was this patch?</h2>
+<p>You know this from text: attention itself has no notion of order, so LLMs add position information (today usually RoPE). Same problem here, but in 2D: shuffle the patches and the bare transformer sees the same set.</p>
+<ul>
+<li><b>Original ViT:</b> add a learned <b>position vector</b> to each patch (one per grid slot). You can see it in Gemma's encoder file: <code>v.position_embd.weight</code> with 4,096 slots = 64 × 64 patches.</li>
+<li><b>Qwen2.5-VL:</b> <b>2D RoPE</b>: the rotation encodes the row and the column, so the model knows "above" and "left of".</li>
+</ul>
+
+<h2 id="the-vision-encoder-a-transformer-whose-tokens-ar"><span class="n">STEP 5</span>The vision encoder: a transformer whose tokens are patches</h2>
+<p>Good news: you already understand it. It's the same machine as an LLM (layers of attention + MLP), with two differences: the tokens are patch vectors, and it doesn't predict a next token; it just outputs one improved vector per patch.</p>
+<p><b>Why it's needed.</b> After step 3, a patch vector only describes its own 14 × 14 square ("dark blue, a curved edge"). Attention lets every patch look at others and mix in what it finds. After many layers, the vector for that patch carries context: it's part of an eye, of a cat, looking at the camera. (That phrase is a description for understanding; nobody can read such a label out of the numbers.)</p>
+<div class="tbl"><table>
+<tr><th>Qwen2.5-VL 3B encoder</th><th>value</th></tr>
+<tr><td>layers × width</td><td class="m">32 × 1,280</td></tr>
+<tr><td>local layers (28 of them)</td><td class="m">attention only inside an 8 × 8-patch window (112 × 112 px). Saves compute, since cost grows with the square of the patch count.</td></tr>
+<tr><td>global layers</td><td class="m">7, 15, 23, 31: every patch can see the whole image</td></tr>
+<tr><td>vision file (encoder + projector)</td><td class="m">669 M parameters, 1.34 GB</td></tr>
+<tr><td>the LLM file</td><td class="m">3.09 B parameters, zero vision tensors: the "eyes" are a separate file</td></tr>
+</table></div>
+<p>In llama.cpp that separate file is the <code>mmproj</code> GGUF ("multimodal projector"). It contains the encoder <i>and</i> the projector, despite the name.</p>
+
+<h2 id="clip-who-taught-the-encoder-what-a-cat-is"><span class="n">STEP 6</span>CLIP: who taught the encoder what a cat is?</h2>
+<p>Nobody labels millions of patches by hand. The most influential answer is <b>CLIP</b> (OpenAI, 2021). Take this one slowly; it's the heart of the story.</p>
+<ol>
+<li><b>Data:</b> 400 million images with the text found next to them on the internet (captions, alt text).</li>
+<li><b>Two encoders:</b> an image encoder (image → vector) and a text encoder (caption → vector), both producing vectors of the same size.</li>
+<li><b>The game:</b> take a batch of N pairs. Compute the similarity of every image with every caption: an N × N table. The N matching pairs are on the diagonal. Training pushes diagonal scores up and all the others down.</li>
+</ol>
+<p>A tiny batch of 3:</p>
+<div class="mini"><div class="h"></div><div class="h">"cat"</div><div class="h">"pizza"</div><div class="h">cat photo</div><div class="d">pull ↑</div><div>push ↓</div><div class="h">pizza photo</div><div>push ↓</div><div class="d">pull ↑</div></div>
+<p>CLIP's real batch: 32,768 pairs, so 32,768² − 32,768 = <b>1,073,709,056</b> wrong pairs pushed apart in each step. After enough of this, an image's vector lands near the vectors of text that describes it. That's what makes the image vectors meaningful in a "language-like" way, which is exactly what an LLM later needs.</p>
+<h3>A real run (CLIP ViT-B/16)</h3>
+<div class="tbl"><table>
+<tr><th></th><th>"…a cat"</th><th>"…a bicycle"</th><th>"…a lighthouse"</th><th>"…a pizza"</th></tr>
+<tr><td>cat photo</td><td class="m sf">0.294</td><td class="m">0.198</td><td class="m">0.172</td><td class="m">0.199</td></tr>
+<tr><td>bicycle photo</td><td class="m">0.185</td><td class="m sf">0.292</td><td class="m">0.165</td><td class="m">0.194</td></tr>
+<tr><td>lighthouse photo</td><td class="m">0.182</td><td class="m">0.181</td><td class="m sf">0.269</td><td class="m">0.189</td></tr>
+<tr><td>pizza photo</td><td class="m">0.173</td><td class="m">0.204</td><td class="m">0.190</td><td class="m sf">0.298</td></tr>
+</table></div>
+<div class="box blue"><div class="t">Why are the numbers so small?</div>Cosine similarity goes from −1 to 1, and CLIP's matching pairs typically sit around 0.3. Only the <b>ranking</b> matters. Before turning scores into probabilities, CLIP multiplies them by a learned scale (100 in this model), so 0.294 vs 0.246 becomes a big gap: cat <b>98.9%</b>, tiger 0.8%, dog 0.1%, rabbit 0.1%, car 0.02%. That's <b>zero-shot</b> classification: it was never trained on this 5-way choice.</div>
+<p><b>SigLIP</b> (Google, 2023) changes only the scoring: each cell of the table is its own yes/no question (sigmoid), instead of a softmax across the whole row. Same idea, cheaper to scale. Gemma 3 uses a 400M SigLIP encoder. Qwen2.5-VL trained its own encoder from scratch; one of its stages was CLIP-style training.</p>
+<h2 id="the-projector-the-adapter-between-two-networks"><span class="n">STEP 7</span>The projector: the adapter between two networks</h2>
+<p>The encoder speaks "1,280 numbers per patch"; Qwen's LLM expects 2,048, and even matching sizes wouldn't mean matching meanings: number #7 in one space has nothing to do with number #7 in the other. So a small network sits between them, like a plug adapter.</p>
+<ul>
+<li><b>LLaVA (2023)</b>: a single matrix. <code>H = W · Z</code>: Z = encoder output, W = learned matrix, H = vectors the size of word vectors. First trained with encoder and LLM frozen, on 595,000 image-caption pairs; the paper calls this "training a compatible visual tokenizer for the frozen LLM".</li>
+<li><b>LLaVA-1.5</b>: a 2-layer MLP instead of one matrix. Still the common design.</li>
+<li><b>Qwen2.5-VL</b> (the "2 × 2 merge", explained in the box below): first glue each 2 × 2 block of neighbouring patch vectors together (4 × 1,280 = 5,120 numbers), then a 2-layer MLP to 2,048. File tensors: <code>mm.0 [5120 → 5120]</code>, <code>mm.2 [5120 → 2048]</code>. Effect: <b>4× fewer tokens</b>. Our cat: 4,060 patches → <b>1,015 image tokens</b>, each covering 28 × 28 pixels.</li>
+<li><b>Gemma 3</b>: 896 × 896 image → 64 × 64 = 4,096 patches → average each 4 × 4 block → 16 × 16 = <b>256 tokens, always</b> → one matrix from 1,152 (SigLIP width) to 2,560 (Gemma 3 4B's width).</li>
+</ul>
+<div class="box key"><div class="t">The 2 × 2 merge, step by step</div>
+<ol>
+<li>After the encoder, every 14 × 14 patch has its own vector of 1,280 numbers. The cat has a grid of 58 × 70 = 4,060 of them.</li>
+<li>Group the grid into squares of 2 × 2 neighbouring patches (top-left, top-right, bottom-left, bottom-right). Together they cover 28 × 28 pixels. 58 × 70 patches → 29 × 35 = <b>1,015 groups</b>.</li>
+<li>In each group, lay the 4 vectors end to end: 4 × 1,280 = <b>5,120 numbers</b>. Nothing is averaged or thrown away yet.</li>
+<li>Pass those 5,120 numbers through the small 2-layer network (<code>mm.0</code>: 5,120 → 5,120, then <code>mm.2</code>: 5,120 → 2,048). Out comes one vector of 2,048: <b>one image token</b>.</li>
+</ol>
+Why: the LLM is the expensive part, and every token costs it compute and context. Merging gives it 4× fewer tokens (1,015 instead of 4,060), while the network still sees all 4 patches' details and can learn what to keep. Gemma's 4 × 4 average pooling is a cruder version of the same idea: it simply averages 16 patch vectors into one.</div>
+<div class="box key"><div class="t">Patch vs token, don't mix them up</div><b>Patch</b> = what the encoder works on (14 × 14 px). <b>Image token</b> = what the LLM receives after the projector (Qwen: 2 × 2 patches = 28 × 28 px; Gemma: 4 × 4 patches pooled). In this article, "tokens" always means the LLM side.</div>
+
+<h2 id="from-pixels-to-image-tokens-with-only-2-d-matrix"><span class="n">DEEP DIVE · THE ACTUAL ARITHMETIC</span>From pixels to image tokens, with only 2-D matrix multiplication</h2>
+<p class="lead">The natural follow-up questions: what the higher-dimensional shapes mean, what a convolution is, who does the reshaping, how the feed-forward layer treats tokens, and where batches fit. Every result here was checked by running it in PyTorch or NumPy.</p>
+
+<h3>A. Higher-dimensional shapes are bookkeeping</h3>
+<div class="box key"><div class="t">The one rule</div>A <b>reshape never changes a number</b>. It copies the same values into a table with different rows and columns. Every 3-D, 4-D or 5-D shape in a model is the same numbers regrouped so that the next step can be an ordinary 2-D multiplication: (m × n) · (n × k) = m × k, where the shared n disappears.</div>
+<p>You can't multiply the image and the weights directly. In NumPy, <code>img @ W</code> with the image as 980 × 812 × 3 and the weights as 14 × 14 × 3 × 1280 fails with <code>ValueError: operands could not be broadcast together</code>. On arrays with more than 2 dimensions, <code>@</code> multiplies only the last two dimensions of each (a <b>batched</b> multiply, see G), and these don't line up. The image has to be cut into patch rows first.</p>
+
+<h3>B. The toy patch multiplication</h3>
+<p>See the box in step 3: a 4 × 4 grey image is cut into four 2 × 2 patches, which become a 4 × 4 matrix X (one row per patch). Two filters are flattened into columns, giving W (4 × 2). X · W gives 14, 22, 46, 54 for "brightness" and −2 everywhere for "left minus right". In NumPy, the cutting step for the real cat looks like this:</p>
+<pre class="mono" style="background:#16181d;border:1px solid var(--line);padding:12px;overflow:auto">X = img.reshape(70, 14, 58, 14, 3)   # split height into 70×14, width into 58×14
+       .transpose(0, 2, 1, 3, 4)     # bring the "which patch" axes to the front
+       .reshape(4060, 588)           # one row per patch: 14×14×3 = 588 numbers
+out = X @ W.reshape(588, 1280)       # (4060 × 588) · (588 × 1280) = 4060 × 1280</pre>
+<p class="dim">Checked: one patch's sum computed manually matches its row in <code>out</code>.</p>
+
+<h3>C. What a convolution is (and what "2D" and "3D" mean)</h3>
+<p>A <b>convolution</b> is a small block of weights (a <b>filter</b>, or kernel) that <b>slides</b> over the data. At each position it multiplies the numbers under it by its weights and adds everything up into one output number. The <b>stride</b> is how far it jumps between positions.</p>
+<div class="box blue"><div class="t">The "D" counts sliding directions, not channels</div>
+Colour channels are never slid over: a filter always covers all 3 colours at once and sums over them.
+<div class="tbl"><table>
+<tr><th>operation</th><th>slides along</th><th>covers in one go</th><th>weights (PyTorch shape)</th></tr>
+<tr><td>Conv2d on a colour photo</td><td>height, width</td><td>all 3 colours</td><td class="m">(1280, 3, 14, 14)</td></tr>
+<tr><td>Conv3d on a colour video</td><td>time, height, width</td><td>all 3 colours</td><td class="m">(1280, 3, 2, 14, 14)</td></tr>
+</table></div>
+So a Conv2d filter on an RGB image is already a 3-D block, but it's called "2D" because it moves in 2 directions.</div>
+
+<p><b>Toy Conv3d, checked in PyTorch.</b> A "video" of 2 grey frames, each 4 × 4. The filter block is 2 frames × 2 × 2 = 8 weights.</p>
+<div class="tbl"><table style="width:auto"><tr><th>frame 1</th><th>frame 2</th></tr><tr><td class="m">1 2 3 4<br/>5 6 7 8<br/>9 10 11 12<br/>13 14 15 16</td><td class="m">17 18 19 20<br/>21 22 23 24<br/>25 26 27 28<br/>29 30 31 32</td></tr></table></div>
+<ul>
+<li>Filter A "brightness" (all +1). Top-left block: 1 + 2 + 5 + 6 + 17 + 18 + 21 + 22 = <b>92</b>.</li>
+<li>Filter B "change over time" (+1 on frame 1, −1 on frame 2): 14 − 78 = <b>−64</b>.</li>
+</ul>
+<div class="tbl"><table style="width:auto"><tr><th>stride 2 (no overlap)</th><th>filter A</th><th>filter B</th></tr><tr><td></td><td class="m">92 108<br/>156 172</td><td class="m">−64 −64<br/>−64 −64</td></tr></table></div>
+<p>With stride 1 the block moves one pixel at a time, so neighbouring positions overlap and you get 3 × 3 outputs (92, 100, 108 / 124, 132, 140 / 156, 164, 172). That's convolution in the usual image-processing sense. Qwen uses stride = block size, so <b>each position is exactly one patch</b>, and the convolution equals "cut, flatten, multiply by a matrix". Checked: same numbers.</p>
+<p><b>Colour toy (Conv2d).</b> Red = the 1 to 16 grid, green = all 10, blue = all 0. One filter "red minus green" (+1 on red, −1 on green, 0 on blue, so 12 weights for a 2 × 2 patch). Top-left: 14 − 40 = <b>−26</b>; all four patches: −26, −18, 6, 14. As a matrix multiply it's (4 × 12) · (12 × 1).</p>
+
+<h3>D. Qwen2.5-VL, step by step, for our cat</h3>
+<p class="dim">Read from the Hugging Face transformers source (<code>image_processing_qwen2_vl.py</code>, <code>modeling_qwen2_5_vl.py</code>) and the vision file used in the demo.</p>
+<ol>
+<li><b>Input.</b> 2,306 × 1,920 × 3 numbers (height × width × colour).</li>
+<li><b>Resize</b> (image processor) to fit the token budget, both sides a multiple of 28 (patch 14 × merge 2): <b>980 × 812 × 3</b>.</li>
+<li><b>Normalise</b> each value: (v / 255 − mean) / std per colour, using CLIP's values (red: mean 0.481, std 0.269). Same shape.</li>
+<li><b>Two frames.</b> Qwen's unit spans 2 video frames, so a photo is copied: <b>2 × 980 × 812 × 3</b>.</li>
+<li><b>Cut and write rows</b> (image processor, no maths). 70 × 58 = 4,060 patches; each holds 3 colours × 2 frames × 14 × 14 = 1,176 numbers, copied into one row in a fixed order. The patches are ordered so that each 2 × 2 group of neighbours is 4 consecutive rows. → <b>X: 4,060 × 1,176</b>.</li>
+<li><b>Patch embedding</b> (first layer of the encoder). 1,280 filters of 1,176 weights, stored as (1280, 3, 2, 14, 14); flattened, they form <b>W: 1,176 × 1,280</b>. <b>Y = X · W → 4,060 × 1,280</b>. In code this is <code>nn.Conv3d</code> with kernel = stride = (2, 14, 14), the same arithmetic. llama.cpp uses two 2-D kernels (<code>v.patch_embd.weight</code> and <code>.weight.1</code>, one per frame) and adds them. For a still image both frames are identical, so "588 numbers in, 1,280 out" is accurate.</li>
+<li><b>Position.</b> No numbers added; each patch keeps its (row, column), and 2D RoPE uses it inside every attention layer.</li>
+<li><b>32 layers</b>, each 4,060 × 1,280 in and out. Inside: Q = Y·Wq, K = Y·Wk, V = Y·Wv (each W 1,280 × 1,280); scores Q·Kᵀ (4,060 × 4,060 in layers 7, 15, 23, 31; 64 × 64 per 8 × 8 window in the other 28); softmax; scores · V; feed-forward 1,280 → 3,420 → 1,280; normalisations and adding back the input.</li>
+<li><b>Merge + projector</b> (<code>PatchMerger</code>): RMSNorm → glue 4 consecutive rows, <code>view(-1, 5120)</code>: <b>1,015 × 5,120</b> → · (5,120 × 5,120) → GELU → · (5,120 × 2,048) → <b>1,015 × 2,048</b>.</li>
+<li><b>Into the LLM.</b> These 1,015 rows overwrite the 1,015 <code>&lt;|image_pad|&gt;</code> rows of the prompt's embeddings.</li>
+</ol>
+<div class="tbl"><table>
+<tr><th>step</th><th>shape</th><th>maths?</th></tr>
+<tr><td>original photo</td><td class="m">2,306 × 1,920 × 3</td><td>no</td></tr>
+<tr><td>resize</td><td class="m">980 × 812 × 3</td><td>resampling</td></tr>
+<tr><td>normalise</td><td class="m">980 × 812 × 3</td><td>per number</td></tr>
+<tr><td>2 frames</td><td class="m">2 × 980 × 812 × 3</td><td>copy</td></tr>
+<tr><td>patches → rows</td><td class="m sf">4,060 × 1,176</td><td>copy</td></tr>
+<tr><td>× W (1,176 × 1,280)</td><td class="m sf">4,060 × 1,280</td><td>matrix multiply</td></tr>
+<tr><td>32 layers</td><td class="m">4,060 × 1,280</td><td>matrix multiplies</td></tr>
+<tr><td>glue 4 rows, × 5,120² , × (5,120 × 2,048)</td><td class="m sf">1,015 × 2,048</td><td>reshape + multiplies</td></tr>
+<tr><td>into the prompt</td><td class="m">1,015 rows of the LLM input</td><td>copy</td></tr>
+</table></div>
+<h3>E. Who does the reshaping: a library, or people by hand?</h3>
+<ul>
+<li><b>The library can do it all in one call.</b> <code>F.conv3d(video, w, stride=(2, 14, 14))</code> with video (1, 3, 2, 980, 812) and w (1280, 3, 2, 14, 14) returns (1, 1280, 1, 70, 58): 1,280 numbers for each of the 70 × 58 patches. Checked: identical to the manual "reshape to 4,060 × 1,176, then multiply". For 2-D there are <code>nn.Conv2d</code> and <code>F.unfold</code> (which just cuts out the patches). Plain NumPy has no such function; you write the reshape yourself.</li>
+<li><b>Qwen's code is half and half.</b> Its image processor does the resize, 2-frame copy, cutting and flattening by hand (<code>reshape</code>/<code>permute</code> lines written by the Qwen team). That lets images of different sizes be packed into one list (see G), puts 2 × 2 neighbours in consecutive rows for the merge, and records the grid size for positions and windows. The model then uses the library's <code>nn.Conv3d</code> on each patch-sized block.</li>
+<li><b>Everything else</b> uses library building blocks: <code>nn.Linear</code> (a 2-D multiply plus a bias), softmax, normalisation. The model's authors write the reshapes between them, like <code>view(-1, 5120)</code>.</li>
+</ul>
+
+<h3>F. The feed-forward layer: one network, each token on its own</h3>
+<p>There is <b>one</b> feed-forward network (one set of weights). All tokens go through it <b>together</b> as one matrix multiply, but each token is processed <b>independently</b>.</p>
+<div class="tbl"><table style="width:auto">
+<tr><th></th><th>input X (5 × 2)</th><th>X · W1 (5 × 3)</th><th>· W2 → (5 × 2)</th></tr>
+<tr><td>token 1</td><td class="m">1 0</td><td class="m">1 0 1</td><td class="m sf">2 1</td></tr>
+<tr><td>token 2</td><td class="m">0 1</td><td class="m">0 1 1</td><td class="m sf">1 2</td></tr>
+<tr><td>token 3</td><td class="m">1 1</td><td class="m">1 1 2</td><td class="m sf">3 3</td></tr>
+<tr><td>token 4</td><td class="m">2 0</td><td class="m">2 0 2</td><td class="m sf">4 2</td></tr>
+<tr><td>token 5</td><td class="m">0 2</td><td class="m">0 2 2</td><td class="m sf">2 4</td></tr>
+</table></div>
+<p class="dim">W1 = [[1 0 1], [0 1 1]], ReLU between (no negatives here), W2 = [[1 0], [0 1], [1 1]].</p>
+<p>Output row 3 depends only on input row 3: push token 3 through alone and you get [3 3] again. So "5 copies in parallel" is right if the copies share <b>identical</b> weights, and "one after another" gives the same numbers, just slower. The library does one multiply, e.g. (4,060 × 1,280) · (1,280 × 3,420) in Qwen's encoder. Qwen's version adds a gate matrix, still row by row. The original Transformer paper calls this layer <b>position-wise</b>.</p>
+<div class="box key"><div class="t">The split of work in a layer</div><b>Attention</b>: tokens exchange information (the only place they interact). <b>Feed-forward</b>: each token processes what it now holds, alone, with the same weights as every other token.</div>
+
+<h3>G. Batches: many prompts or images at once</h3>
+<p>A batch adds one dimension: (B prompts, T tokens, d numbers), e.g. (2, 5, 2).</p>
+<ul>
+<li><b>Feed-forward ignores the batch:</b> reshape (2, 5, 2) → (10, 2), multiply, reshape back. To this layer, 2 prompts of 5 tokens look like 10 tokens.</li>
+<li><b>Attention keeps prompts separate:</b> a token may only look at its own prompt, so you get 2 separate 5 × 5 score tables, not one 10 × 10. Q (2, 5, d) · Kᵀ (2, d, 5) = (2, 5, 5). This <b>batched matrix multiply</b> is what <code>@</code> does on 3-D arrays: the last two dimensions are multiplied, once per entry of the first.</li>
+<li><b>Different lengths:</b> either <b>pad</b> short prompts with dummy tokens plus a <b>mask</b> (their scores set to −∞ before softmax, so weight 0), or <b>pack</b> everything into one long list and record the boundaries.</li>
+<li><b>Qwen's vision encoder packs.</b> Two images of 4,060 and 1,200 patches become one list of 5,260 rows plus boundaries, <code>cu_seqlens</code>, so attention never mixes patches from different images. The window layers do the same per 8 × 8 window with <code>cu_window_seqlens</code>. (Both are in Qwen's attention code.)</li>
+<li>The demo here used a batch of 1. Servers batch many users' prompts; the maths per token is the same.</li>
+</ul>
+
+<h2 id="inside-the-llm-the-image-becomes-part-of-the-pro"><span class="n">STEP 8</span>Inside the LLM: the image becomes part of the prompt</h2>
+<p>Qwen's chat format around the image (real special-token IDs from the model):</p>
+<p><code>&lt;|vision_start|&gt;</code> (151652) · <code>&lt;|image_pad|&gt;</code> × 1,015 · <code>&lt;|vision_end|&gt;</code> (151653) · "Describe this image in 2 sentences."</p>
+<ol>
+<li>The prompt is tokenized with one <code>&lt;|image_pad|&gt;</code> placeholder per image token.</li>
+<li>After the embedding lookup, before layer 1, each placeholder's vector is <b>replaced</b> by one image vector from the projector.</li>
+<li>From then on it's a normal forward pass. When the model writes "blue", attention lets that position look back at all 1,015 image positions, exactly like looking back at earlier words.</li>
+</ol>
+<p><b>Positions:</b> Qwen's MRoPE gives each image token (row, column); text tokens get a plain counter. That's how "eyes above nose" survives into the LLM.</p>
+<p><b>Read, not write:</b> image vectors are not rows of the vocabulary table; the output layer can only choose among the 151,936 vocabulary entries. So this design can read images but not produce them.</p>
+<p><b>Cost on a laptop CPU:</b> encoding the cat into 1,015 tokens took 54.6 s on CPU, before the first word of the answer.</p>
+<h2 id="training-in-stages-why-freeze-things"><span class="n">STEP 9</span>Training in stages: why freeze things?</h2>
+<p>You glue together two networks that were trained separately. If you trained everything at once from the start, the random new projector would send garbage into the LLM and could damage what it already knows. So: first train the glue, then loosen the rest.</p>
+<div class="tbl"><table>
+<tr><th>model</th><th>what trains when</th></tr>
+<tr><td>LLaVA</td><td>1) projector only (595K caption pairs) · 2) projector + LLM, encoder frozen (158K conversations about images)</td></tr>
+<tr><td>Qwen2.5-VL</td><td>LLM starts from Qwen2.5 · 1) only the ViT (1.5T tokens) · 2) everything unfrozen (2T) · 3) long inputs: long video, documents, agent tasks (0.6T) · ≈ 4.1T total</td></tr>
+<tr><td>Gemma 3</td><td>vision encoder frozen throughout; the language model learns to use it</td></tr>
+</table></div>
+
+<h2 id="resolution-is-a-budget-real-experiments"><span class="n">STEP 10</span>Resolution is a budget (real experiments)</h2>
+<p>More pixels → more patches → more tokens → more compute and context. So systems cap it and <b>shrink</b> the image first. Whatever is too small after shrinking is gone before the model sees anything.</p>
+<div class="tbl"><table>
+<tr><th>Qwen, token limit</th><th>image given</th><th>tokens</th><th>"eye colour?"</th><th>eye chart rows</th></tr>
+<tr><td class="m">64</td><td class="m">cat 196×224 · chart 252×168</td><td class="m">56 · 54</td><td class="ok">Blue</td><td class="m bad">2 / 8</td></tr>
+<tr><td class="m">256</td><td class="m">392×476 · 504×364</td><td class="m">238 · 234</td><td class="ok">Blue</td><td class="m">5 / 8</td></tr>
+<tr><td class="m">1,024</td><td class="m">812×980 · 1,008×756</td><td class="m">1,015 · 972</td><td class="ok">Blue</td><td class="m">7 / 8</td></tr>
+<tr><td class="m">2,048</td><td class="m">chart 1,456×1,092</td><td class="m">2,028</td><td></td><td class="m">7 / 8</td></tr>
+<tr><td>Gemma 3 4B</td><td class="m">always 896×896</td><td class="m">256</td><td></td><td class="m">6 / 8</td></tr>
+</table></div>
+<p>Lesson: a big obvious feature (eye colour) survives a tiny budget; fine detail (small letters) needs many tokens. The eye chart uses <b>random</b> letters so the model can't guess words from context. Google saw the same in Gemma 3's report: document-reading score 31.9 → 45.4 → 59.8 as encoder resolution goes 256 → 448 → 896.</p>
+<p><b>Tiling</b> is the workaround: cut a big image into several full-resolution crops (Gemma's Pan & Scan; InternVL's 1 to 40 tiles of 448 × 448 plus a small thumbnail of the whole). More detail, more tokens.</p>
+
+<h2 id="what-an-image-costs-in-an-api"><span class="n">STEP 11</span>What an image costs in an API</h2>
+<p>Anthropic's docs: "Claude views images in patches instead of pixels. Each patch is a 28×28-pixel block of the image, referred to as a visual token." Tokens = ⌈w/28⌉ × ⌈h/28⌉, with caps (Claude 4.7 and later: 2,576 px long edge, 4,784 tokens; other models: 1,568 px, 1,568 tokens). OpenAI's docs describe 32 × 32 px patches for some models, with a 2,500-patch budget at <code>high</code> detail on several.</p>
+<div class="tool"><div class="t">Calculator · Claude visual tokens (approximate: downscale keeps aspect ratio)</div>
+<div class="row">width <input type="number" id="aw" value="1920" /> height <input type="number" id="ah" value="1080" />
+<button id="tierH" class="on">Claude 4.7+</button><button id="tierS">other models</button></div>
+<p class="out" id="aout"></p>
+<p class="dim">Check against the docs' table: 1000×1000 → 1,296; 1920×1080 → 2,691 (4.7+) or 1,560 at 1,456×819 (other).</p>
+</div>
+<div class="box warn"><div class="t">A fair comparison</div>Labs don't publish their vision architectures. Claude's 28 px happens to match Qwen's token size, but that doesn't mean Claude <i>is</i> built like Qwen. What we can say: they count the same way, a grid of patches, paid per patch.</div>
+
+<h2 id="other-ways-to-wire-it"><span class="n">STEP 12</span>Other ways to wire it</h2>
+<div class="tbl"><table>
+<tr><th>design</th><th>how the image gets in</th><th>examples</th></tr>
+<tr><td><b>In line</b> (this video's main story)</td><td>image tokens placed in the sequence next to words</td><td>LLaVA, Qwen2.5-VL, Gemma 3</td></tr>
+<tr><td><b>Cross-attention</b></td><td>image stays outside the sequence; extra layers inside the LLM let text attend to image features</td><td>Flamingo (DeepMind 2022); Llama 3: after every 4th layer, +100B params for 405B</td></tr>
+<tr><td><b>Discrete image tokens</b></td><td>image → codes from a codebook, added to the vocabulary, so the model can also <i>write</i> images</td><td>Chameleon (Meta 2024): 512×512 → 1,024 tokens, 8,192 codes, 65,536 vocab</td></tr>
+<tr><td><b>Early fusion</b></td><td>text and vision tokens trained together from the start in one backbone</td><td>Llama 4 (still a MetaCLIP-based vision encoder)</td></tr>
+</table></div>
+<p>Common core: the image becomes vectors that a transformer can attend to.</p>
+
+<h2 id="why-it-still-fails"><span class="n">STEP 13</span>Why it still fails</h2>
+<ul>
+<li><b>Small text</b>: shrunk below a patch → becomes texture. (Eye chart.)</li>
+<li><b>Counting</b>: true 4 / 9 / 17 / 38 → Qwen 4, 10, 15, 30; Gemma 5, 8, 21, 47. 1 right of 8, worse as counts grow. There's no counting step; the number is predicted like any token. Anthropic's docs say counts are approximate with many small objects.</li>
+<li><b>Exact positions</b>: approximate (Anthropic's docs say to verify coordinates).</li>
+</ul>
+<p>These are small 3B/4B models in 4-bit on a CPU; bigger models do better. The mechanism, and the reason for these failure types, is the same.</p>
+
+<h2 id="common-confusions-to-avoid"><span class="n">STEP 14</span>Common confusions to avoid</h2>
+<details><summary>"The LLM looks at the image."</summary>No: it receives vectors made from a shrunk copy. The encoder did the "looking"; the LLM reads the result.</details>
+<details><summary>"CLIP is the model that answers."</summary>No. CLIP is a training method (and a model) that produces an image encoder whose outputs line up with text. The answering is done by the LLM.</details>
+<details><summary>"Image tokens are words from the vocabulary."</summary>No: they are vectors that match no vocabulary row (except in designs like Chameleon, which add image codes to the vocabulary).</details>
+<details><summary>"Patches and image tokens are the same thing."</summary>In Qwen, 4 patches become 1 token; in Gemma, 4,096 patches become 256 tokens. In the original ViT, yes, 1 patch = 1 token.</details>
+<details><summary>"The projector is big."</summary>No, it's tiny next to the encoder and LLM (Qwen's is about 37M of the 669M in the vision file). Its job is translation, not understanding.</details>
+<details><summary>"More resolution is always better."</summary>Better detail, but more tokens: slower, pricier, and uses context. That's the trade-off the budget chapter shows.</details>
+
+<h2 id="check-yourself"><span class="n">STEP 15</span>Check yourself</h2>
+<details><summary>1. Why can image vectors be inserted into a text model at all?</summary>Because after the embedding lookup an LLM only works with vectors; any vector of the right size, in the space it understands, can occupy a position.</details>
+<details><summary>2. How many numbers in one Qwen patch, and what comes out?</summary>14 × 14 × 3 = 588 in; a 1,280-number vector out (via v.patch_embd).</details>
+<details><summary>3. Why do patches need positions?</summary>Attention treats input as a set; without positions a shuffled image is identical to the original.</details>
+<details><summary>4. In CLIP training, what's pulled together and what's pushed apart?</summary>Each image with its own caption is pulled together; with every other caption in the batch it's pushed apart.</details>
+<details><summary>5. What does the projector do in Qwen, and why the 2 × 2 merge?</summary>Joins 4 neighbouring patch vectors (5,120 numbers) and maps them to 2,048 for the LLM; cuts the token count by 4.</details>
+<details><summary>6. Our cat: patches and tokens?</summary>812 × 980 → 58 × 70 = 4,060 patches → 1,015 image tokens.</details>
+<details><summary>7. Why did 56 tokens answer "blue" but fail the eye chart?</summary>Eye colour is a big feature that survives shrinking; small letters fall below one patch and disappear.</details>
+<details><summary>8. How does Claude count image tokens?</summary>⌈w/28⌉ × ⌈h/28⌉ after resizing within its cap; 1000×1000 → 1,296.</details>
+<details><summary>9. Why can't this design draw images?</summary>Its output layer only picks from the text vocabulary; image vectors aren't in it.</details>
+<details><summary>10. One-line summary?</summary>An LLM never sees pixels; it reads vectors made from patches, trained to sit near the right words.</details>
+<details><summary>11. Why can't you just do img @ W with the 4-D weights?</summary>The shapes don't line up for a 2-D multiply. First cut the image into a 4,060 × 588 (or 1,176) table of patch rows; then it's (4,060 × 588) · (588 × 1,280).</details>
+<details><summary>12. What does the "3D" in Conv3d count, and where do the colours go?</summary>The directions the filter slides: time, height, width. Colours are always fully inside the filter and summed over.</details>
+<details><summary>13. Do 5 tokens go through the feed-forward layer one by one or together?</summary>Together as one 5-row matrix multiply with one shared set of weights, but each row is computed independently: tokens only interact in attention.</details>
+<details><summary>14. How does a batch of prompts fit in?</summary>Feed-forward treats all tokens of all prompts as rows. Attention keeps a separate score table per prompt (batched multiply), using padding + mask or packing with boundaries (Qwen's vision encoder packs, with cu_seqlens).</details>
+
+<h2 id="glossary"><span class="n">STEP 16</span>Glossary</h2>
+<div class="tbl"><table>
+<tr><td><b>Embedding</b></td><td>the vector a token is turned into; an LLM's real input</td></tr>
+<tr><td><b>Patch</b></td><td>a small square of the image (14 × 14 px in Qwen/Gemma)</td></tr>
+<tr><td><b>Patch embedding</b></td><td>the vector made from a patch's pixels by one learned matrix</td></tr>
+<tr><td><b>ViT</b></td><td>Vision Transformer: a transformer whose tokens are patches</td></tr>
+<tr><td><b>Vision encoder</b></td><td>the ViT used to turn an image into patch vectors with context</td></tr>
+<tr><td><b>CLIP / SigLIP</b></td><td>training an image encoder and text encoder so matching image-caption pairs get close vectors</td></tr>
+<tr><td><b>Zero-shot</b></td><td>doing a task it wasn't trained for, e.g. picking the closest of 5 captions</td></tr>
+<tr><td><b>Projector / connector</b></td><td>small network mapping encoder vectors into the LLM's embedding size</td></tr>
+<tr><td><b>Image token / soft token</b></td><td>one projected vector placed in the LLM's sequence</td></tr>
+<tr><td><b>mmproj</b></td><td>llama.cpp's separate file holding the vision encoder + projector</td></tr>
+<tr><td><b>RoPE / 2D RoPE / MRoPE</b></td><td>position encoding by rotation; 2D adds row + column; Qwen's MRoPE adds time for video</td></tr>
+<tr><td><b>Window attention</b></td><td>attention limited to nearby patches to save compute</td></tr>
+<tr><td><b>Pan &amp; Scan / tiling</b></td><td>cutting a big image into full-resolution crops to keep detail</td></tr>
+<tr><td><b>Cross-attention</b></td><td>layers letting text attend to image features kept outside the sequence</td></tr>
+</table></div>
+
+
+<h2 id="sources">Sources</h2><ul class="sources">
+<li>Dosovitskiy et al., <a href="https://arxiv.org/abs/2010.11929">An Image is Worth 16x16 Words</a> (ViT, 2020): patches, patch embeddings, position embeddings</li>
+<li>Radford et al., <a href="https://arxiv.org/abs/2103.00020">Learning Transferable Visual Models From Natural Language Supervision</a> (CLIP, 2021): 400M image-text pairs, contrastive training, batch 32,768, zero-shot</li>
+<li>Zhai et al., <a href="https://arxiv.org/abs/2303.15343">Sigmoid Loss for Language Image Pre-Training</a> (SigLIP, 2023)</li>
+<li>Liu et al., <a href="https://arxiv.org/abs/2304.08485">Visual Instruction Tuning</a> (LLaVA, 2023) and <a href="https://arxiv.org/abs/2310.03744">Improved Baselines with Visual Instruction Tuning</a> (LLaVA-1.5, 2023)</li>
+<li>Qwen Team, <a href="https://arxiv.org/abs/2502.13923">Qwen2.5-VL Technical Report</a> (2025): 2D RoPE, window attention, 2 × 2 merger, MRoPE, training stages</li>
+<li>Gemma Team, <a href="https://arxiv.org/abs/2503.19786">Gemma 3 Technical Report</a> (2025): 400M SigLIP encoder, 256 soft tokens, Pan &amp; Scan, resolution vs DocVQA</li>
+<li>Chen et al., <a href="https://arxiv.org/abs/2404.16821">How Far Are We to GPT-4V?</a> (InternVL 1.5, 2024): 448 × 448 tiles plus a thumbnail</li>
+<li>Alayrac et al., <a href="https://arxiv.org/abs/2204.14198">Flamingo</a> (2022) and Llama Team, <a href="https://arxiv.org/abs/2407.21783">The Llama 3 Herd of Models</a> (2024): cross-attention designs</li>
+<li>Chameleon Team, <a href="https://arxiv.org/abs/2405.09818">Chameleon</a> (2024): discrete image tokens; Meta, <a href="https://ai.meta.com/blog/llama-4-multimodal-intelligence/">The Llama 4 herd</a> (2025): early fusion</li>
+<li>Anthropic, <a href="https://platform.claude.com/docs/en/build-with-claude/vision">Vision docs</a> and OpenAI, <a href="https://developers.openai.com/api/docs/guides/images-vision">Images and vision</a> (read October 2026): patch-based image token counting and limits</li>
+<li>Experiments: Qwen2.5-VL-3B and Gemma 3 4B (ggml-org GGUF, Q4_K_M) with llama.cpp's llama-mtmd-cli on CPU; CLIP ViT-B/16 with Hugging Face transformers</li>
+<li>Photos: Wikimedia Commons, CC0 (cat by AdinaVoicu; bicycle by Shams948; lighthouse by Jebulon; pizza by Kurt Kaiser)</li>
+</ul>
+<div class="endcard"><h3>Watch the full video</h3><p>18 minutes, animated: the same cat goes from pixels to patches to image tokens, with every number from the real run.</p>
+<div class="actions"><a class="btn ytbtn" data-watch="vision-long" target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.6 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg>Watch on YouTube</a>
+<a class="btn" data-channel target="_blank" rel="noopener">Subscribe</a>
+<a class="btn" href="https://www.linkedin.com/in/rohit-kumar-singh-621818a9/" target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><path d="M20.4 20.5h-3.6v-5.6c0-1.3 0-3-1.8-3s-2.1 1.4-2.1 2.9v5.7H9.3V9h3.4v1.6h.1c.5-.9 1.6-1.8 3.4-1.8 3.6 0 4.3 2.4 4.3 5.5v6.2zM5.3 7.4a2.1 2.1 0 1 1 0-4.1 2.1 2.1 0 0 1 0 4.1zM7.1 20.5H3.5V9h3.6v11.5zM22.2 0H1.8C.8 0 0 .8 0 1.7v20.6c0 .9.8 1.7 1.8 1.7h20.4c1 0 1.8-.8 1.8-1.7V1.7C24 .8 23.2 0 22.2 0z"/></svg>Follow on LinkedIn</a></div></div>
+<a class="next" href="../rope/"><span>Next explainer</span><b>Positional encoding and RoPE, from scratch →</b></a>
+</article>
+</div>
+<script>
+(function () {
+  // Patch grid over the cat.
+  var cv = document.getElementById("gridc"), cx = cv.getContext("2d"), out = document.getElementById("gridout");
+  function grid(p) {
+    cx.clearRect(0, 0, 812, 980);
+    cx.strokeStyle = "rgba(255,176,32,0.85)"; cx.lineWidth = p >= 28 ? 2 : 1;
+    for (var x = 0; x <= 812; x += p) { cx.beginPath(); cx.moveTo(x, 0); cx.lineTo(x, 980); cx.stroke(); }
+    for (var y = 0; y <= 980; y += p) { cx.beginPath(); cx.moveTo(0, y); cx.lineTo(812, y); cx.stroke(); }
+    var nx = Math.ceil(812 / p), ny = Math.ceil(980 / p);
+    out.textContent = p + " px squares: " + nx + " × " + ny + " = " + (nx * ny).toLocaleString("en-US") + (p === 14 ? " patches (what the encoder sees)" : p === 28 ? " image tokens (what the LLM gets after the 2×2 merge)" : " squares (a much smaller budget)");
+  }
+  document.querySelectorAll("[data-p]").forEach(function (b) {
+    b.addEventListener("click", function () { document.querySelectorAll("[data-p]").forEach(function (o) { o.classList.remove("on"); }); b.classList.add("on"); grid(+b.dataset.p); });
+  });
+  grid(14);
+  // Patch / token calculator.
+  function calc() {
+    var w = +document.getElementById("cw").value, h = +document.getElementById("ch").value, p = +document.getElementById("cp").value || 14;
+    var nx = Math.ceil(w / p), ny = Math.ceil(h / p), n = nx * ny;
+    document.getElementById("cout").textContent = nx + " × " + ny + " = " + n.toLocaleString("en-US") + " patches · after a 2×2 merge ≈ " + Math.ceil(n / 4).toLocaleString("en-US") + " tokens · " + (p * p * 3) + " numbers per patch";
+  }
+  ["cw", "ch", "cp"].forEach(function (id) { document.getElementById(id).addEventListener("input", calc); });
+  calc();
+  // Claude token calculator (aspect-preserving downscale to fit long edge and token cap).
+  var tier = "H";
+  function api() {
+    var w = +document.getElementById("aw").value, h = +document.getElementById("ah").value;
+    var edge = tier === "H" ? 2576 : 1568, cap = tier === "H" ? 4784 : 1568, s = Math.min(1, edge / Math.max(w, h));
+    var rw = Math.floor(w * s), rh = Math.floor(h * s);
+    while (Math.ceil(rw / 28) * Math.ceil(rh / 28) > cap) { s *= 0.995; rw = Math.floor(w * s); rh = Math.floor(h * s); }
+    var t = Math.ceil(rw / 28) * Math.ceil(rh / 28);
+    document.getElementById("aout").textContent = (rw === w && rh === h ? "not resized" : "resized to ≈ " + rw + " × " + rh) + " · " + Math.ceil(rw / 28) + " × " + Math.ceil(rh / 28) + " = " + t.toLocaleString("en-US") + " visual tokens";
+  }
+  ["aw", "ah"].forEach(function (id) { document.getElementById(id).addEventListener("input", api); });
+  document.getElementById("tierH").addEventListener("click", function () { tier = "H"; this.classList.add("on"); document.getElementById("tierS").classList.remove("on"); api(); });
+  document.getElementById("tierS").addEventListener("click", function () { tier = "S"; this.classList.add("on"); document.getElementById("tierH").classList.remove("on"); api(); });
+  api();
+})();
+</script>
+<footer class="site"><div class="in"><span>© 2026 Rohit Kumar Singh</span>
+<span><a href="https://www.linkedin.com/in/rohit-kumar-singh-621818a9/" target="_blank" rel="noopener">LinkedIn</a> · <a href="https://github.com/gotherohit/AIML" target="_blank" rel="noopener">GitHub</a> · <a href="mailto:rohitkrsingh2000@gmail.com">Email</a></span></div></footer>
+<script src="../../assets/site.js"></script>
+</body></html>

@@ -4,6 +4,8 @@ const VIDEOS = {
   "rope-long":  "https://youtu.be/e3wE7pvi7sI",               // Positional encoding and RoPE, from scratch (long video)
   "rope-short": "https://youtube.com/shorts/VvRbbmzuqC4",               // RoPE Short
   "swa-short":  "https://youtube.com/shorts/akXuRjRXxZk",               // Sliding window attention Short
+  "vision-long":  "https://youtu.be/15drILbSCVg",               // How LLMs see images (long video)
+  "vision-short": "https://youtube.com/shorts/UvJ45e8awmI",       // To an AI, this cat is 1,015 tokens
 };
 // ------------------------------------------------------------------------------------------
 
