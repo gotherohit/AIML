@@ -1,149 +1,80 @@
-<!DOCTYPE HTML>
-<!--
-	Massively by HTML5 UP
-	html5up.net | @ajlkn
-	Free for personal and commercial use under the CCA 3.0 license (html5up.net/license)
--->
-<html>
-	<head>
-		<title>Rohit Portfolio</title>
-		<meta charset="utf-8" />
-		<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-		<link rel="stylesheet" href="assets/css/main.css" />
-		<noscript><link rel="stylesheet" href="assets/css/noscript.css" /></noscript>
-	</head>
-	<body class="is-preload">
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Rohit Kumar Singh · How language models actually work</title>
+<meta name="description" content="Animated explainers and in-depth articles on how large language models work, built from real experiments and the original papers.">
+<link rel="canonical" href="https://gotherohit.github.io/AIML/">
+<meta property="og:type" content="website"><meta property="og:title" content="Rohit Kumar Singh · How language models actually work">
+<meta property="og:description" content="Animated explainers and in-depth articles on how large language models work, built from real experiments and the original papers."><meta property="og:url" content="https://gotherohit.github.io/AIML/">
+<meta property="og:image" content="https://gotherohit.github.io/AIML/images/covers/rope.jpg"><meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x2='1' y2='1'%3E%3Cstop stop-color='%2335d6c0'/%3E%3Cstop offset='1' stop-color='%23ff6a2b'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/site.css">
+</head><body>
+<header class="topbar"><div class="in">
+<a class="brand" href=""><span class="mark">RK</span>Rohit Kumar Singh</a>
+<nav><a class="txt" href="#explainers">Explainers</a><a class="txt" href="#projects">Projects</a><a class="txt" href="#about">About</a>
+<a class="icon" data-channel target="_blank" rel="noopener" aria-label="YouTube"><svg viewBox="0 0 24 24"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.6 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg></a>
+<a class="icon" href="https://www.linkedin.com/in/rohit-kumar-singh-621818a9/" target="_blank" rel="noopener" aria-label="LinkedIn"><svg viewBox="0 0 24 24"><path d="M20.4 20.5h-3.6v-5.6c0-1.3 0-3-1.8-3s-2.1 1.4-2.1 2.9v5.7H9.3V9h3.4v1.6h.1c.5-.9 1.6-1.8 3.4-1.8 3.6 0 4.3 2.4 4.3 5.5v6.2zM5.3 7.4a2.1 2.1 0 1 1 0-4.1 2.1 2.1 0 0 1 0 4.1zM7.1 20.5H3.5V9h3.6v11.5zM22.2 0H1.8C.8 0 0 .8 0 1.7v20.6c0 .9.8 1.7 1.8 1.7h20.4c1 0 1.8-.8 1.8-1.7V1.7C24 .8 23.2 0 22.2 0z"/></svg></a>
+<a class="icon" href="https://github.com/gotherohit/AIML" target="_blank" rel="noopener" aria-label="GitHub"><svg viewBox="0 0 24 24"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.3-3.1-.2-.4-.6-1.6 0-3.2 0 0 1-.3 3.4 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.2.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.5.4.9 1.1.9 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"/></svg></a></nav>
+</div></header>
+<main class="wrap">
+<section class="hero">
+<div class="eyebrow">AI / ML, from first principles</div>
+<h1>How language models <em>actually</em> work.</h1>
+<p class="lead">I'm Rohit Kumar Singh. I make animated explainers on YouTube about what happens inside large language models, and write the in-depth companion articles here. Every graph comes from a model I ran myself, and every claim is checked against the original paper.</p>
+<div class="actions"><a class="btn primary" href="#explainers">Read the explainers</a>
+<a class="btn ytbtn" data-channel target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.6 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg>Subscribe on YouTube</a>
+<a class="btn" href="https://www.linkedin.com/in/rohit-kumar-singh-621818a9/" target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><path d="M20.4 20.5h-3.6v-5.6c0-1.3 0-3-1.8-3s-2.1 1.4-2.1 2.9v5.7H9.3V9h3.4v1.6h.1c.5-.9 1.6-1.8 3.4-1.8 3.6 0 4.3 2.4 4.3 5.5v6.2zM5.3 7.4a2.1 2.1 0 1 1 0-4.1 2.1 2.1 0 0 1 0 4.1zM7.1 20.5H3.5V9h3.6v11.5zM22.2 0H1.8C.8 0 0 .8 0 1.7v20.6c0 .9.8 1.7 1.8 1.7h20.4c1 0 1.8-.8 1.8-1.7V1.7C24 .8 23.2 0 22.2 0z"/></svg>Connect on LinkedIn</a></div>
+<div class="principles">
+<div><b>Real experiments</b>Numbers come from models I run: Qwen, Gemma, GPT-2, SmolLM. Nothing is invented for the diagram.</div>
+<div><b>Primary sources</b>Claims are checked against the original papers and official reference code.</div>
+<div><b>No maths assumed</b>Built up step by step, with the formulas there when you want them.</div>
+</div>
+</section>
 
-		<!-- Wrapper -->
-			<div id="wrapper" class="fade-in">
+<section class="section" id="explainers">
+<div class="section-head"><div><div class="eyebrow">Explainers</div><h2>Video + article</h2></div>
+<p>Each topic has an animated video and a longer article with the code, the data and the papers behind it.</p></div>
+<div class="cards">
+<a class="card" href="explainers/rope/"><div class="cover" style="background-image:url('images/covers/rope.jpg')" role="img" aria-label="Positional encoding and RoPE, from scratch"></div>
+<div class="body"><div class="tags"><span class="tag">Positional encoding</span><span class="tag">RoPE</span></div><h3>Positional encoding and RoPE, from scratch</h3><p>Why attention is blind to word order, and how sine waves, learned tables, ALiBi and finally rotation fix it. Includes a test that moves a sentence 20,000 positions.</p><div class="meta"><span>31 min read</span><span>22 min video</span><span>Qwen · GPT-2 · SmolLM</span></div></div></a>
+<a class="card" href="explainers/sliding-window-attention/"><div class="cover" style="background-image:url('images/covers/swa.jpg')" role="img" aria-label="Sliding window attention"></div>
+<div class="body"><div class="tags"><span class="tag">Attention</span><span class="tag">KV cache</span></div><h3>Sliding window attention</h3><p>Why 22 of Gemma 3's 26 layers only see the last 512 tokens, what 'reach on paper' means, and a recall test that shows where long memory really lives.</p><div class="meta"><span>9 min read</span><span>3 min Short</span><span>Gemma 3 1B</span></div></div></a>
+</div>
+</section>
 
-				<!-- Intro -->
-					<div id="intro">
-						<h1>Rohit's<br />
-						Portfolio</h1>
-						<p>Empowering insights with expertise in Deep Learning, Machine Learning, Python, TensorFlow, SQL, and Power BI. <br> <a href="https://www.linkedin.com/in/rohit-kumar-singh-621818a9/" target="_blank">@Connect on linkedin</a> 
-						.</p>
-						<ul class="actions">
-							<li><a href="#header" class="button icon solid solo fa-arrow-down scrolly">Continue</a></li>
-						</ul>
-					</div>
+<section class="section" id="projects">
+<div class="section-head"><div><div class="eyebrow">Projects</div><h2>Notebooks</h2></div>
+<p>Models built from scratch in TensorFlow, with the full code on GitHub.</p></div>
+<div class="projects">
+<a class="proj" href="https://github.com/gotherohit/AIML/blob/main/Replicating%20Models/generative_pretrained_transformer.ipynb" target="_blank" rel="noopener"><div class="cover" style="background-image:url('images/thumbs/t_wine_review.jpg')"></div>
+<div class="body"><h3>Decoder Transformer from scratch</h3><p>A GPT-style decoder built in TensorFlow and trained on Kaggle's Wine Reviews to generate new reviews.</p></div></a>
+<a class="proj" href="https://github.com/gotherohit/AIML/blob/main/Replicating%20Models/Replicating_PixelCNN.ipynb" target="_blank" rel="noopener"><div class="cover" style="background-image:url('images/thumbs/pixel_cnn_image_1.jpg')"></div>
+<div class="body"><h3>PixelCNN</h3><p>An autoregressive image model that generates an image pixel by pixel, each conditioned on the ones before it.</p></div></a>
+<a class="proj" href="https://github.com/gotherohit/AIML/blob/main/Projects/Transfer_Learning.ipynb" target="_blank" rel="noopener"><div class="cover" style="background-image:url('images/thumbs/transfer_learning_1.jpg')"></div>
+<div class="body"><h3>Transfer learning with VGG16</h3><p>Image classification in TensorFlow using VGG16 pretrained on ImageNet.</p></div></a>
+<a class="proj" href="https://github.com/gotherohit/AIML/blob/main/Projects/Object_Localization_TensorFlow.ipynb" target="_blank" rel="noopener"><div class="cover" style="background-image:url('images/thumbs/emoji_localization.jpg')"></div>
+<div class="body"><h3>Object localization</h3><p>A CNN that classifies an emoji and draws a bounding box around it.</p></div></a>
+</div>
+</section>
 
-				<!-- Header -->
-					<header id="header">
-						<a href="index.html" class="logo">Rohit's Portfolio</a>
-					</header>
-
-				<!-- Nav -->
-					<nav id="nav">
-						<ul class="links">
-							<li class="active"><a href="index.html">Projects</a></li>
-
-						</ul>
-						<ul class="icons">
-							<li><a href="https://www.linkedin.com/in/rohit-kumar-singh-621818a9/" target="_blank" class="icon brands alt fa-linkedin"><span class="label">LinkedIn</span></a></li>
-							<li><a href="https://github.com/gotherohit/AIML/tree/main" target="_blank" class="icon brands alt fa-github"><span class="label">GitHub</span></a></li>
-						</ul>
-					</nav>
-
-				<!-- Main -->
-					<div id="main">
-
-						<!-- Featured Post -->
-							<article class="post featured">
-								<header class="major">
-									<h2><a href="https://github.com/gotherohit/AIML/blob/main/Replicating%20Models/generative_pretrained_transformer.ipynb" target="_blank">Transformer Model for Wine Review<br />
-									</a></h2>
-									<p>In this Project we create a Decoder Transformer Architecture from scratch using TensorFlow. <br>
-									 Model is trained on Wine Review Dataset from Kaggel, and generates Wine reviews given the Sample Tokens </p>
-								</header>
-								<a href="https://github.com/gotherohit/AIML/blob/main/Replicating%20Models/generative_pretrained_transformer.ipynb" target="_blank" class="image main"><img src="images/t_wine_review.png" alt="" width="100" height="450" /></a>
-								<ul class="actions special">
-									<li><a href="https://github.com/gotherohit/AIML/blob/main/Replicating%20Models/generative_pretrained_transformer.ipynb" target="_blank" class="button large">Go to Project</a></li>
-								</ul>
-							</article>
-
-						<!-- Posts -->
-							<section class="posts">
-								<article>
-									<header>
-										
-										<h2><a href="https://github.com/gotherohit/AIML/blob/main/Replicating%20Models/Replicating_PixelCNN.ipynb" target="_blank" >PixelCNN<br />
-										</a></h2>
-									</header>
-									<a href="https://github.com/gotherohit/AIML/blob/main/Replicating%20Models/Replicating_PixelCNN.ipynb" target="_blank"  class="image fit"><img src="images/pixel_cnn_image_1.png" alt="" /></a>
-									<p>In this Project we create PixelCNN, this model is trained to generate image Pixel by Pixel
-									by considering the pixels before current pixel, i.e. Autoregressively.</p>
-									<ul class="actions special">
-										<li><a href="https://github.com/gotherohit/AIML/blob/main/Replicating%20Models/Replicating_PixelCNN.ipynb" target="_blank" class="button">Go to Project</a></li>
-									</ul>
-								</article>
-								<article>
-									<header>
-										
-										<h2><a href="https://github.com/gotherohit/AIML/blob/main/Projects/Transfer_Learning.ipynb" target="_blank">Transfer Learning<br />
-										</a></h2>
-									</header>
-									<a href="https://github.com/gotherohit/AIML/blob/main/Projects/Transfer_Learning.ipynb" target="_blank" class="image fit"><img src="images/transfer_learning_1.png" alt="" /></a>
-									<p>In this Project we implement Transfer learning using VGG 16 model
-										, pretrained on ImageNet dataset, for image classification in TensorFlow</p>
-									<ul class="actions special">
-										<li><a href="https://github.com/gotherohit/AIML/blob/main/Projects/Transfer_Learning.ipynb" target="_blank" class="button">Go To Project</a></li>
-									</ul>
-								</article>
-								
-								<article>
-									<header>
-										
-										<h2><a href="https://github.com/gotherohit/AIML/blob/main/Projects/Object_Localization_TensorFlow.ipynb" target="_blank">Object Localization in Tensorflow<br />
-										</a></h2>
-									</header>
-									<a href="https://github.com/gotherohit/AIML/blob/main/Projects/Object_Localization_TensorFlow.ipynb" target="_blank" class="image fit"><img src="images/emoji_localization.png" alt="" /></a>
-									<p>In this Project we learn to implement simpler version of object localization model for emoji,
-										where we will train our CNN model to predict the class of an emoji as well draw a bounding box around the emoji. </p>
-									<ul class="actions special">
-										<li><a href="https://github.com/gotherohit/AIML/blob/main/Projects/Object_Localization_TensorFlow.ipynb" target="_blank" class="button">Go To Project</a></li>
-									</ul>
-								</article>
-								
-							</section>
-
-						<section class="split contact">
-							<section class="alt">
-								<h3>Location</h3>
-								<p>Pune<br />
-								Maharashtra, India</p>
-							</section>
-							
-							<section>
-								<h3>Email</h3>
-								<p><a href="#">rohitkrsingh2000@gmail.com</a></p>
-							</section>
-							<section>
-								<h3>Social</h3>
-								<ul class="icons alt">
-
-									<li><a href="https://www.linkedin.com/in/rohit-kumar-singh-621818a9/" target="_blank" class="icon brands alt fa-linkedin"><span class="label">LinkedIn</span></a></li>
-									<li><a href="https://github.com/gotherohit/AIML/tree/main" target="_blank" class="icon brands alt fa-github"><span class="label">GitHub</span></a></li>
-								</ul>
-							</section>
-						</section>
-					</footer>
-
-				<!-- Copyright -->
-					<div id="copyright">
-						<ul><li>&copy; Untitled</li><li>Design: <a href="https://html5up.net">HTML5 UP</a></li></ul>
-					</div>
-
-			</div>
-
-		<!-- Scripts -->
-			<script src="assets/js/jquery.min.js"></script>
-			<script src="assets/js/jquery.scrollex.min.js"></script>
-			<script src="assets/js/jquery.scrolly.min.js"></script>
-			<script src="assets/js/browser.min.js"></script>
-			<script src="assets/js/breakpoints.min.js"></script>
-			<script src="assets/js/util.js"></script>
-			<script src="assets/js/main.js"></script>
-
-	</body>
-</html>
+<section class="section" id="about">
+<div class="about">
+<div><div class="eyebrow">About</div><h2 style="font-size:30px;letter-spacing:-.025em;margin:6px 0 14px">Hi, I'm Rohit.</h2>
+<p>I work in deep learning and machine learning with Python, TensorFlow and PyTorch, and I explain what I learn. The videos and articles here take one idea at a time, from tokenizers and positional encoding to attention and the KV cache, and test it on real models instead of describing it from a distance.</p>
+<p>If something here helped you or you spot a mistake, I'd like to hear from you.</p></div>
+<div class="contact"><dl>
+<dt>Location</dt><dd>Pune, Maharashtra, India</dd>
+<dt>Email</dt><dd><a href="mailto:rohitkrsingh2000@gmail.com">rohitkrsingh2000@gmail.com</a></dd>
+<dt>LinkedIn</dt><dd><a href="https://www.linkedin.com/in/rohit-kumar-singh-621818a9/" target="_blank" rel="noopener">rohit-kumar-singh</a></dd>
+<dt>GitHub</dt><dd><a href="https://github.com/gotherohit/AIML" target="_blank" rel="noopener">gotherohit/AIML</a></dd>
+<dt>YouTube</dt><dd data-if-links><a data-channel target="_blank" rel="noopener">MORE (@go_rohit)</a></dd>
+</dl></div>
+</div>
+</section>
+</main>
+<footer class="site"><div class="in"><span>© 2026 Rohit Kumar Singh</span>
+<span><a href="https://www.linkedin.com/in/rohit-kumar-singh-621818a9/" target="_blank" rel="noopener">LinkedIn</a> · <a href="https://github.com/gotherohit/AIML" target="_blank" rel="noopener">GitHub</a> · <a href="mailto:rohitkrsingh2000@gmail.com">Email</a></span></div></footer>
+<script src="assets/site.js"></script>
+</body></html>

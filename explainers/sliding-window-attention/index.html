@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sliding window attention: why 22 of Gemma 3&#x27;s 26 layers can&#x27;t see past 512 tokens</title>
+<meta name="description" content="How sliding window attention caps the KV cache, what &#x27;reach on paper&#x27; really means, and a recall test on Gemma 3 1B that shows where long-range memory actually lives.">
+<link rel="canonical" href="https://gotherohit.github.io/AIML/explainers/sliding-window-attention/">
+<meta property="og:type" content="article"><meta property="og:title" content="Sliding window attention: why 22 of Gemma 3&#x27;s 26 layers can&#x27;t see past 512 tokens">
+<meta property="og:description" content="How sliding window attention caps the KV cache, what &#x27;reach on paper&#x27; really means, and a recall test on Gemma 3 1B that shows where long-range memory actually lives."><meta property="og:url" content="https://gotherohit.github.io/AIML/explainers/sliding-window-attention/">
+<meta property="og:image" content="https://gotherohit.github.io/AIML/images/covers/swa.jpg"><meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x2='1' y2='1'%3E%3Cstop stop-color='%2335d6c0'/%3E%3Cstop offset='1' stop-color='%23ff6a2b'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../assets/site.css"><style>:root{--accent:#ffd400;--accent2:#00c2ff}.prose .y{color:#ffd400}.prose .b{color:#00c2ff}.prose .fig .t{font:600 10px var(--mono);fill:#c8c4bb}</style>
+</head><body>
+<header class="topbar"><div class="in">
+<a class="brand" href="../../"><span class="mark">RK</span>Rohit Kumar Singh</a>
+<nav><a class="txt" href="../../#explainers">Explainers</a><a class="txt" href="../../#projects">Projects</a><a class="txt" href="../../#about">About</a>
+<a class="icon" data-channel target="_blank" rel="noopener" aria-label="YouTube"><svg viewBox="0 0 24 24"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.6 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg></a>
+<a class="icon" href="https://www.linkedin.com/in/rohit-kumar-singh-621818a9/" target="_blank" rel="noopener" aria-label="LinkedIn"><svg viewBox="0 0 24 24"><path d="M20.4 20.5h-3.6v-5.6c0-1.3 0-3-1.8-3s-2.1 1.4-2.1 2.9v5.7H9.3V9h3.4v1.6h.1c.5-.9 1.6-1.8 3.4-1.8 3.6 0 4.3 2.4 4.3 5.5v6.2zM5.3 7.4a2.1 2.1 0 1 1 0-4.1 2.1 2.1 0 0 1 0 4.1zM7.1 20.5H3.5V9h3.6v11.5zM22.2 0H1.8C.8 0 0 .8 0 1.7v20.6c0 .9.8 1.7 1.8 1.7h20.4c1 0 1.8-.8 1.8-1.7V1.7C24 .8 23.2 0 22.2 0z"/></svg></a>
+<a class="icon" href="https://github.com/gotherohit/AIML" target="_blank" rel="noopener" aria-label="GitHub"><svg viewBox="0 0 24 24"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.3-3.1-.2-.4-.6-1.6 0-3.2 0 0 1-.3 3.4 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.2.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.5.4.9 1.1.9 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"/></svg></a></nav>
+</div></header>
+<div class="article-head">
+<div class="crumbs"><a href="../../#explainers">Explainers</a> /</div>
+<h1>Sliding window attention: why 22 of Gemma 3's 26 layers can't see past 512 tokens</h1>
+<p class="dek">A sliding window layer only looks at the last W tokens, so its memory stops growing. Stacking layers extends the reach on paper, but a real test on Gemma 3 shows why models still keep a few full-attention layers.</p>
+<div class="tags" style="margin-bottom:16px"><span class="tag">Attention</span><span class="tag">KV cache</span><span class="tag">Gemma 3</span><span class="tag">Real experiment</span></div>
+<div class="byline"><span>By <b>Rohit Kumar Singh</b></span><span>October 2026</span><span>9 min read</span></div>
+</div>
+<div class="videos"><div class="yt vertical" data-video="swa-short" data-label="Short" data-title="Sliding window attention, explained with a real test" data-cover="../../images/covers/swa-short.jpg"></div></div>
+<div class="layout">
+<details class="toc"><summary>Contents</summary><ol><li><a href="#full-attention-the-normal-way">Full attention (the normal way)</a></li><li><a href="#the-window">The window</a></li><li><a href="#real-model-gemma-3-1b">Real model: Gemma 3 1B</a></li><li><a href="#real-run-the-cache">Real run: the cache</a></li><li><a href="#real-run-where-attention-goes">Real run: where attention goes</a></li><li><a href="#reach-on-paper">Reach on paper</a></li><li><a href="#real-run-the-recall-test">Real run: the recall test</a></li><li><a href="#who-uses-it">Who uses it</a></li><li><a href="#why-it-matters-memory">Why it matters: memory</a></li></ol></details>
+<article class="prose">
+<div class="box key"><b>In one line:</b> a sliding window layer only looks at the last W tokens, so its memory stops growing; stacking layers lets information travel further on paper, but in practice models keep a few full-attention layers for the long view.</div>
+
+<h2 id="full-attention-the-normal-way">1 · Full attention (the normal way)</h2>
+<p>Quick refresher. In every layer, each token makes three vectors: a <b>query</b> ("what am I looking for?"), a <b>key</b> ("what do I contain?") and a <b>value</b> ("what I pass on"). Attention compares a token's query with the keys of itself and every earlier token (one comparison each), turns the scores into weights, and mixes the values. To avoid recomputing keys and values, the model stores them, in <b>every layer</b>: the KV cache. Memory grows <b>linearly</b>: double the chat, double the cache.</p>
+
+<h3>Why "quadratic" if only the last token is predicting?</h3>
+<p>It's true that when the model writes a new token, only that one new query is compared against the stored keys. That's <b>N comparisons for one token</b> when N tokens are in the cache: linear. The quadratic part comes from adding up <b>all the tokens</b>:</p>
+<div class="box"><b>Reading your prompt (prefill).</b> All N prompt tokens are processed at once, and each one compares itself with every token before it. Token 1 does 1 comparison, token 2 does 2, ... token N does N. Total: 1 + 2 + ... + N = N × (N + 1) / 2.<br>
+1,000 tokens → <b>500,500</b> comparisons. 2,000 tokens → <b>2,001,000</b>. Double the length, about <b>4×</b> the work. That's what quadratic means.</div>
+<div class="box"><b>Writing the answer (decode).</b> Each new token is one query against everything so far, so every token costs a little more than the one before: token 1,001 does 1,001 comparisons, token 2,000 does 2,000. Writing tokens 1,001 to 2,000 costs about 1.5 million in total. One step is linear; the whole sequence adds up to quadratic again. (The KV cache is what keeps each step down to one query. Without it, every step would redo the whole prompt.)</div>
+<div class="box key"><b>With a 512-token window,</b> no token ever does more than 512 comparisons. After the first 512 tokens, every token costs the same, so the total grows in a straight line: double the length, about double the work.</div>
+<p><small>One honest detail: attention is only part of a layer. The feed-forward part costs the same for every token whatever the length, so on short prompts most of the compute isn't attention at all. The quadratic part takes over as texts get long. Mistral's paper says the "number of operations in vanilla attention is quadratic in the sequence length" (attention, not the whole model).</small></p>
+
+<h2 id="the-window">2 · The window</h2>
+<p>A sliding window layer changes one rule: a token may only look at the <b>last W tokens</b> (itself included). Older tokens get exactly zero attention in that layer, so their keys and values are never needed again and can be dropped. The cache for that layer stops at W tokens however long the text gets. Mistral calls this a <b>rolling buffer</b>: position i is stored in slot i mod W, overwriting the oldest.</p>
+
+<h2 id="real-model-gemma-3-1b">3 · Real model: Gemma 3 1B</h2>
+<p>From its config: <b>26 layers</b>, window <b>512 tokens</b>. Layers 6, 12, 18, 24 are full attention (<span class="b">blue</span>), the other 22 are window layers (<span class="y">yellow</span>): 5 window, 1 full, repeated.</p>
+<svg viewBox="0 0 530 46" class="fig"><rect x="5" y="6" width="16" height="24" fill="#ffd400"/>
+<text x="13" y="42" class="t" text-anchor="middle">1</text><rect x="25" y="6" width="16" height="24" fill="#ffd400"/>
+<text x="33" y="42" class="t" text-anchor="middle">2</text><rect x="45" y="6" width="16" height="24" fill="#ffd400"/>
+<text x="53" y="42" class="t" text-anchor="middle">3</text><rect x="65" y="6" width="16" height="24" fill="#ffd400"/>
+<text x="73" y="42" class="t" text-anchor="middle">4</text><rect x="85" y="6" width="16" height="24" fill="#ffd400"/>
+<text x="93" y="42" class="t" text-anchor="middle">5</text><rect x="105" y="6" width="16" height="24" fill="#00c2ff"/>
+<text x="113" y="42" class="t" text-anchor="middle">6</text><rect x="125" y="6" width="16" height="24" fill="#ffd400"/>
+<text x="133" y="42" class="t" text-anchor="middle">7</text><rect x="145" y="6" width="16" height="24" fill="#ffd400"/>
+<text x="153" y="42" class="t" text-anchor="middle">8</text><rect x="165" y="6" width="16" height="24" fill="#ffd400"/>
+<text x="173" y="42" class="t" text-anchor="middle">9</text><rect x="185" y="6" width="16" height="24" fill="#ffd400"/>
+<text x="193" y="42" class="t" text-anchor="middle">10</text><rect x="205" y="6" width="16" height="24" fill="#ffd400"/>
+<text x="213" y="42" class="t" text-anchor="middle">11</text><rect x="225" y="6" width="16" height="24" fill="#00c2ff"/>
+<text x="233" y="42" class="t" text-anchor="middle">12</text><rect x="245" y="6" width="16" height="24" fill="#ffd400"/>
+<text x="253" y="42" class="t" text-anchor="middle">13</text><rect x="265" y="6" width="16" height="24" fill="#ffd400"/>
+<text x="273" y="42" class="t" text-anchor="middle">14</text><rect x="285" y="6" width="16" height="24" fill="#ffd400"/>
+<text x="293" y="42" class="t" text-anchor="middle">15</text><rect x="305" y="6" width="16" height="24" fill="#ffd400"/>
+<text x="313" y="42" class="t" text-anchor="middle">16</text><rect x="325" y="6" width="16" height="24" fill="#ffd400"/>
+<text x="333" y="42" class="t" text-anchor="middle">17</text><rect x="345" y="6" width="16" height="24" fill="#00c2ff"/>
+<text x="353" y="42" class="t" text-anchor="middle">18</text><rect x="365" y="6" width="16" height="24" fill="#ffd400"/>
+<text x="373" y="42" class="t" text-anchor="middle">19</text><rect x="385" y="6" width="16" height="24" fill="#ffd400"/>
+<text x="393" y="42" class="t" text-anchor="middle">20</text><rect x="405" y="6" width="16" height="24" fill="#ffd400"/>
+<text x="413" y="42" class="t" text-anchor="middle">21</text><rect x="425" y="6" width="16" height="24" fill="#ffd400"/>
+<text x="433" y="42" class="t" text-anchor="middle">22</text><rect x="445" y="6" width="16" height="24" fill="#ffd400"/>
+<text x="453" y="42" class="t" text-anchor="middle">23</text><rect x="465" y="6" width="16" height="24" fill="#00c2ff"/>
+<text x="473" y="42" class="t" text-anchor="middle">24</text><rect x="485" y="6" width="16" height="24" fill="#ffd400"/>
+<text x="493" y="42" class="t" text-anchor="middle">25</text><rect x="505" y="6" width="16" height="24" fill="#ffd400"/>
+<text x="513" y="42" class="t" text-anchor="middle">26</text></svg>
+<h3>Paper vs config: checked</h3>
+<p>The Gemma 3 paper says local layers get "a smaller span of only 1024 tokens", but the 1B config says 512. I checked Google's own reference code (github.com/google/gemma_pytorch, <code>gemma/config.py</code>):</p>
+<div class="tbl"><table><tr><th></th><th>Paper</th><th>Google code, 1B</th><th>Google code, 4B / 12B / 27B</th><th>Config used in my test (1B)</th></tr>
+<tr><td>Window</td><td>1,024</td><td><b>512</b></td><td>1,024</td><td><b>512</b></td></tr>
+<tr><td>Pattern</td><td>5 local : 1 global, local first</td><td>5 local, 1 global, repeated</td><td>same</td><td>same; full at layers 6, 12, 18, 24</td></tr>
+<tr><td>Layers</td><td>not per model in text</td><td>26</td><td>34 / 48 / 62</td><td>26</td></tr>
+<tr><td>RoPE base</td><td>10k local, 1M global</td><td>10,000 / 1,000,000</td><td>same</td><td>10,000 / 1,000,000</td></tr>
+<tr><td>KV heads × head size</td><td>not in text</td><td>1 × 256</td><td>4 × 256 (4B)</td><td>1 × 256</td></tr></table></div>
+<p><b>Conclusion:</b> there's no conflict. The paper's 1,024 is the window of the 4B, 12B and 27B models; Google's code gives the 1B a 512 window, and the demo config matches Google's code on every field above. So whenever a window size appears on this page, the model size is named with it.</p>
+<p><b>What "a 512 window" means exactly:</b> Google's code masks a key when it's 512 or more positions back, so a token sees itself plus the 511 before it: 512 in total. The demo measured exactly that (512 tokens with nonzero attention), and the cache keeps 511 because the next token brings itself.</p>
+<p><small>Not cross-checked: my test uses Unsloth's public re-upload, because Google's Hugging Face repo needs a login. Its config matches Google's code; the weights couldn't be compared byte for byte. The 270M second check isn't in Google's reference code, so its config is taken from the re-upload only.</small></p>
+
+<h2 id="real-run-the-cache">4 · Real run: the cache</h2>
+<p>I sent a <b>2,005-token</b> prompt and read the cache length in every layer:</p>
+<svg viewBox="0 0 340 374" class="fig"><text x="4" y="15" class="t">L1</text>
+<rect x="34" y="6" width="63.71571072319202" height="10" fill="#ffd400"/>
+<text x="103.71571072319202" y="15" class="t">511</text><text x="4" y="29" class="t">L2</text>
+<rect x="34" y="20" width="63.71571072319202" height="10" fill="#ffd400"/>
+<text x="103.71571072319202" y="29" class="t">511</text><text x="4" y="43" class="t">L3</text>
+<rect x="34" y="34" width="63.71571072319202" height="10" fill="#ffd400"/>
+<text x="103.71571072319202" y="43" class="t">511</text><text x="4" y="57" class="t">L4</text>
+<rect x="34" y="48" width="63.71571072319202" height="10" fill="#ffd400"/>
+<text x="103.71571072319202" y="57" class="t">511</text><text x="4" y="71" class="t">L5</text>
+<rect x="34" y="62" width="63.71571072319202" height="10" fill="#ffd400"/>
+<text x="103.71571072319202" y="71" class="t">511</text><text x="4" y="85" class="t">L6</text>
+<rect x="34" y="76" width="250" height="10" fill="#00c2ff"/>
+<text x="290" y="85" class="t">2,005</text><text x="4" y="99" class="t">L7</text>
+<rect x="34" y="90" width="63.71571072319202" height="10" fill="#ffd400"/>
+<text x="103.71571072319202" y="99" class="t">511</text><text x="4" y="113" class="t">L8</text>
+<rect x="34" y="104" width="63.71571072319202" height="10" fill="#ffd400"/>
+<text x="103.71571072319202" y="113" class="t">511</text><text x="4" y="127" class="t">L9</text>
+<rect x="34" y="118" width="63.71571072319202" height="10" fill="#ffd400"/>
+<text x="103.71571072319202" y="127" class="t">511</text><text x="4" y="141" class="t">L10</text>
+<rect x="34" y="132" width="63.71571072319202" height="10" fill="#ffd400"/>
+<text x="103.71571072319202" y="141" class="t">511</text><text x="4" y="155" class="t">L11</text>
+<rect x="34" y="146" width="63.71571072319202" height="10" fill="#ffd400"/>
+<text x="103.71571072319202" y="155" class="t">511</text><text x="4" y="169" class="t">L12</text>
+<rect x="34" y="160" width="250" height="10" fill="#00c2ff"/>
+<text x="290" y="169" class="t">2,005</text><text x="4" y="183" class="t">L13</text>
+<rect x="34" y="174" width="63.71571072319202" height="10" fill="#ffd400"/>
+<text x="103.71571072319202" y="183" class="t">511</text><text x="4" y="197" class="t">L14</text>
+<rect x="34" y="188" width="63.71571072319202" height="10" fill="#ffd400"/>
+<text x="103.71571072319202" y="197" class="t">511</text><text x="4" y="211" class="t">L15</text>
+<rect x="34" y="202" width="63.71571072319202" height="10" fill="#ffd400"/>
+<text x="103.71571072319202" y="211" class="t">511</text><text x="4" y="225" class="t">L16</text>
+<rect x="34" y="216" width="63.71571072319202" height="10" fill="#ffd400"/>
+<text x="103.71571072319202" y="225" class="t">511</text><text x="4" y="239" class="t">L17</text>
+<rect x="34" y="230" width="63.71571072319202" height="10" fill="#ffd400"/>
+<text x="103.71571072319202" y="239" class="t">511</text><text x="4" y="253" class="t">L18</text>
+<rect x="34" y="244" width="250" height="10" fill="#00c2ff"/>
+<text x="290" y="253" class="t">2,005</text><text x="4" y="267" class="t">L19</text>
+<rect x="34" y="258" width="63.71571072319202" height="10" fill="#ffd400"/>
+<text x="103.71571072319202" y="267" class="t">511</text><text x="4" y="281" class="t">L20</text>
+<rect x="34" y="272" width="63.71571072319202" height="10" fill="#ffd400"/>
+<text x="103.71571072319202" y="281" class="t">511</text><text x="4" y="295" class="t">L21</text>
+<rect x="34" y="286" width="63.71571072319202" height="10" fill="#ffd400"/>
+<text x="103.71571072319202" y="295" class="t">511</text><text x="4" y="309" class="t">L22</text>
+<rect x="34" y="300" width="63.71571072319202" height="10" fill="#ffd400"/>
+<text x="103.71571072319202" y="309" class="t">511</text><text x="4" y="323" class="t">L23</text>
+<rect x="34" y="314" width="63.71571072319202" height="10" fill="#ffd400"/>
+<text x="103.71571072319202" y="323" class="t">511</text><text x="4" y="337" class="t">L24</text>
+<rect x="34" y="328" width="250" height="10" fill="#00c2ff"/>
+<text x="290" y="337" class="t">2,005</text><text x="4" y="351" class="t">L25</text>
+<rect x="34" y="342" width="63.71571072319202" height="10" fill="#ffd400"/>
+<text x="103.71571072319202" y="351" class="t">511</text><text x="4" y="365" class="t">L26</text>
+<rect x="34" y="356" width="63.71571072319202" height="10" fill="#ffd400"/>
+<text x="103.71571072319202" y="365" class="t">511</text></svg>
+<p>Window layers keep <b>511</b>; the token being processed next makes 512 = W. Full layers keep all <b>2,005</b>.</p>
+
+<h2 id="real-run-where-attention-goes">5 · Real run: where attention goes</h2>
+<p>The last token's attention over the 2,005-token prompt (averaged over heads):</p>
+<svg viewBox="0 0 340 110" class="fig"><text x="6" y="14" class="t">WINDOW LAYER 1</text>
+<rect x="6" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="11.2" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="16.4" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="21.6" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="26.8" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="32" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="37.2" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="42.4" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="47.6" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="52.800000000000004" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="58" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="63.2" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="68.4" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="73.60000000000001" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="78.8" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="84" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="89.2" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="94.4" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="99.60000000000001" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="104.8" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="110" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="115.2" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="120.4" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="125.60000000000001" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="130.8" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="136" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="141.20000000000002" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="146.4" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="151.6" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="156.8" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="162" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="167.20000000000002" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="172.4" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="177.6" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="182.8" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="188" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="193.20000000000002" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="198.4" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="203.6" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="208.8" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="214" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="219.20000000000002" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="224.4" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="229.6" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="234.8" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="240" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="245.20000000000002" y="94" width="4.4" height="0" fill="#ffd400"/><rect x="250.4" y="92.39200258185612" width="4.4" height="1.6079974181438748" fill="#ffd400"/><rect x="255.60000000000002" y="90.53397694941027" width="4.4" height="3.466023050589728" fill="#ffd400"/><rect x="260.8" y="91.57594597109667" width="4.4" height="2.4240540289033246" fill="#ffd400"/><rect x="266" y="91.65979689662478" width="4.4" height="2.3402031033752224" fill="#ffd400"/><rect x="271.2" y="92.18563228745721" width="4.4" height="1.8143677125427915" fill="#ffd400"/><rect x="276.40000000000003" y="92.38548854301345" width="4.4" height="1.614511456986554" fill="#ffd400"/><rect x="281.6" y="92.00171463757987" width="4.4" height="1.9982853624201335" fill="#ffd400"/><rect x="286.8" y="91.6446898703726" width="4.4" height="2.3553101296273926" fill="#ffd400"/><rect x="292" y="92.13407436300027" width="4.4" height="1.8659256369997403" fill="#ffd400"/><rect x="297.2" y="91.63970039381226" width="4.4" height="2.3602996061877426" fill="#ffd400"/><rect x="302.40000000000003" y="90.87658767322097" width="4.4" height="3.1234123267790355" fill="#ffd400"/><rect x="307.6" y="90.33509086985188" width="4.4" height="3.66490913014812" fill="#ffd400"/><rect x="312.8" y="88.0702843011664" width="4.4" height="5.929715698833611" fill="#ffd400"/><rect x="318" y="87.62649808043749" width="4.4" height="6.373501919562509" fill="#ffd400"/><rect x="323.2" y="83.2765060992391" width="4.4" height="10.723493900760895" fill="#ffd400"/><rect x="328.40000000000003" y="77.0654393610302" width="4.4" height="16.934560638969792" fill="#ffd400"/><rect x="333.6" y="24" width="4.4" height="70" fill="#ffd400"/>
+<line x1="6" y1="95" x2="339" y2="95" stroke="#555"/><text x="6" y="107" class="t">oldest token</text><text x="270" y="107" class="t">newest</text></svg>
+<svg viewBox="0 0 340 110" class="fig"><text x="6" y="14" class="t">FULL LAYER 6</text>
+<rect x="6" y="36.56690828868579" width="4.4" height="57.43309171131421" fill="#00c2ff"/><rect x="11.2" y="90.15562559092342" width="4.4" height="3.844374409076584" fill="#00c2ff"/><rect x="16.4" y="91.28427355814686" width="4.4" height="2.7157264418531355" fill="#00c2ff"/><rect x="21.6" y="90.6052316419792" width="4.4" height="3.3947683580208006" fill="#00c2ff"/><rect x="26.8" y="88.97270721714466" width="4.4" height="5.0272927828553415" fill="#00c2ff"/><rect x="32" y="85.87532303813425" width="4.4" height="8.124676961865742" fill="#00c2ff"/><rect x="37.2" y="90.36432398361173" width="4.4" height="3.6356760163882758" fill="#00c2ff"/><rect x="42.4" y="91.113079104948" width="4.4" height="2.886920895052001" fill="#00c2ff"/><rect x="47.6" y="90.97144658052316" width="4.4" height="3.0285534194768355" fill="#00c2ff"/><rect x="52.800000000000004" y="91.4373778758273" width="4.4" height="2.562622124172707" fill="#00c2ff"/><rect x="58" y="71.75531043176804" width="4.4" height="22.244689568231955" fill="#00c2ff"/><rect x="63.2" y="92.43718878033407" width="4.4" height="1.5628112196659312" fill="#00c2ff"/><rect x="68.4" y="91.46385124487867" width="4.4" height="2.536148755121336" fill="#00c2ff"/><rect x="73.60000000000001" y="92.67324298770879" width="4.4" height="1.326757012291207" fill="#00c2ff"/><rect x="78.8" y="92.62470847778128" width="4.4" height="1.3752915222187203" fill="#00c2ff"/><rect x="84" y="79.08358020800505" width="4.4" height="14.916419791994954" fill="#00c2ff"/><rect x="89.2" y="92.56205483769304" width="4.4" height="1.437945162306965" fill="#00c2ff"/><rect x="94.4" y="92.49057674125433" width="4.4" height="1.5094232587456664" fill="#00c2ff"/><rect x="99.60000000000001" y="92.98651118815002" width="4.4" height="1.013488811849984" fill="#00c2ff"/><rect x="104.8" y="92.88635360857234" width="4.4" height="1.113646391427671" fill="#00c2ff"/><rect x="110" y="81.04569807752915" width="4.4" height="12.954301922470846" fill="#00c2ff"/><rect x="115.2" y="92.8704695871415" width="4.4" height="1.1295304128584935" fill="#00c2ff"/><rect x="120.4" y="92.89341317365269" width="4.4" height="1.106586826347305" fill="#00c2ff"/><rect x="125.60000000000001" y="92.62294358651118" width="4.4" height="1.3770564134888117" fill="#00c2ff"/><rect x="130.8" y="92.95209580838323" width="4.4" height="1.0479041916167664" fill="#00c2ff"/><rect x="136" y="92.83914276709739" width="4.4" height="1.1608572329026159" fill="#00c2ff"/><rect x="141.20000000000002" y="80.94024582414119" width="4.4" height="13.059754175858806" fill="#00c2ff"/><rect x="146.4" y="92.43630633469903" width="4.4" height="1.5636936653009768" fill="#00c2ff"/><rect x="151.6" y="91.93331232272297" width="4.4" height="2.0666876772770246" fill="#00c2ff"/><rect x="156.8" y="92.34629687992437" width="4.4" height="1.653703120075638" fill="#00c2ff"/><rect x="162" y="92.69927513394263" width="4.4" height="1.300724866057359" fill="#00c2ff"/><rect x="167.20000000000002" y="77.08748818153168" width="4.4" height="16.912511818468325" fill="#00c2ff"/><rect x="172.4" y="92.15833595965962" width="4.4" height="1.8416640403403715" fill="#00c2ff"/><rect x="177.6" y="91.20088244563505" width="4.4" height="2.799117554364954" fill="#00c2ff"/><rect x="182.8" y="92.46013236684526" width="4.4" height="1.539867633154743" fill="#00c2ff"/><rect x="188" y="92.45086668767728" width="4.4" height="1.5491333123227227" fill="#00c2ff"/><rect x="193.20000000000002" y="91.72020170185944" width="4.4" height="2.2797982981405607" fill="#00c2ff"/><rect x="198.4" y="80.79596596281122" width="4.4" height="13.20403403718878" fill="#00c2ff"/><rect x="203.6" y="92.1499527261267" width="4.4" height="1.8500472738733058" fill="#00c2ff"/><rect x="208.8" y="92.24834541443428" width="4.4" height="1.7516545855657102" fill="#00c2ff"/><rect x="214" y="92.61632524424834" width="4.4" height="1.3836747557516544" fill="#00c2ff"/><rect x="219.20000000000002" y="92.02552789158526" width="4.4" height="1.9744721084147492" fill="#00c2ff"/><rect x="224.4" y="81.99697447210842" width="4.4" height="12.003025527891584" fill="#00c2ff"/><rect x="229.6" y="91.81329971635677" width="4.4" height="2.1867002836432397" fill="#00c2ff"/><rect x="234.8" y="91.82786006933502" width="4.4" height="2.1721399306649856" fill="#00c2ff"/><rect x="240" y="92.0996533249291" width="4.4" height="1.9003466750709108" fill="#00c2ff"/><rect x="245.20000000000002" y="92.26820044122282" width="4.4" height="1.7317995587771822" fill="#00c2ff"/><rect x="250.4" y="79.41317365269461" width="4.4" height="14.586826347305388" fill="#00c2ff"/><rect x="255.60000000000002" y="91.69108099590294" width="4.4" height="2.308919004097069" fill="#00c2ff"/><rect x="260.8" y="90.81922470847778" width="4.4" height="3.1807752915222185" fill="#00c2ff"/><rect x="266" y="91.6112196659313" width="4.4" height="2.3887803340687044" fill="#00c2ff"/><rect x="271.2" y="92.13803971005358" width="4.4" height="1.8619602899464227" fill="#00c2ff"/><rect x="276.40000000000003" y="91.50179640718562" width="4.4" height="2.498203592814371" fill="#00c2ff"/><rect x="281.6" y="78.8356129845572" width="4.4" height="15.164387015442795" fill="#00c2ff"/><rect x="286.8" y="88.50721714465806" width="4.4" height="5.492782855341947" fill="#00c2ff"/><rect x="292" y="89.67689883391112" width="4.4" height="4.3231011660888745" fill="#00c2ff"/><rect x="297.2" y="87.10059880239521" width="4.4" height="6.89940119760479" fill="#00c2ff"/><rect x="302.40000000000003" y="90.83202017018594" width="4.4" height="3.1679798298140556" fill="#00c2ff"/><rect x="307.6" y="69.3329971635676" width="4.4" height="24.667002836432395" fill="#00c2ff"/><rect x="312.8" y="88.8575480617712" width="4.4" height="5.142451938228805" fill="#00c2ff"/><rect x="318" y="85.16318941065238" width="4.4" height="8.83681058934762" fill="#00c2ff"/><rect x="323.2" y="82.42319571383548" width="4.4" height="11.576804286164512" fill="#00c2ff"/><rect x="328.40000000000003" y="82.06536400882446" width="4.4" height="11.934635991175542" fill="#00c2ff"/><rect x="333.6" y="24" width="4.4" height="70" fill="#00c2ff"/>
+<line x1="6" y1="95" x2="339" y2="95" stroke="#555"/><text x="6" y="107" class="t">oldest token</text><text x="270" y="107" class="t">newest</text></svg>
+<p>Window layer: <b>512</b> of 2,005 tokens get any attention, starting at token 1,494. Weight on everything older: <b>0</b>. Full layer: all 2,005 get some.</p>
+
+<h2 id="reach-on-paper">6 · Reach on paper</h2>
+<p>The key fact: a layer's output for a token isn't just that token any more. It's a <b>mix</b> of everything the token looked at. The next layer then looks at those mixes, so it gets information second-hand.</p>
+<p><b>Tiny example: a window of 3</b> (a token sees itself and the 2 before it), 9 tokens, and we follow token 9:</p>
+<div class="tbl"><table><tr><th>Layer</th><th>Token 9 looks at</th><th>…which already contain</th><th>So token 9 now carries</th></tr>
+<tr><td>1</td><td>tokens 7, 8, 9</td><td>just themselves</td><td>7 to 9</td></tr>
+<tr><td>2</td><td>layer-1 mixes of 7, 8, 9</td><td>mix of 7 holds 5, 6, 7</td><td>5 to 9</td></tr>
+<tr><td>3</td><td>layer-2 mixes of 7, 8, 9</td><td>mix of 7 holds 3 to 7</td><td>3 to 9</td></tr>
+<tr><td>4</td><td>layer-3 mixes of 7, 8, 9</td><td>mix of 7 holds 1 to 7</td><td><b>1 to 9</b></td></tr></table></div>
+<p>Every layer, token 9 reaches 2 more tokens back. No single layer ever looked further than 2 back, yet after 4 layers token 1 can influence token 9. It's like a message passed down a row of people who can each only talk to their neighbours.</p>
+<p><b>Real numbers.</b> In Gemma 3 1B (window 512 = itself + 511 before), token 2,000 sees tokens 1,489 to 2,000 in layer 1. Token 1,489's own mix already holds tokens back to 978, so in layer 2 token 2,000 carries information from 978 onwards, and so on, 511 more per layer. Over 26 layers that's 26 × 511 = <b>13,286</b> tokens; people usually round it to layers × window = 13,312. The video rounds it to "over 13,000", which is true either way.</p>
+<p>Mistral's paper describes this exactly: <i>"after k attention layers, information can move forward by up to k × W tokens"</i>; with W = 4,096 and 32 layers, a <b>"theoretical attention span of approximately 131K tokens"</b>. (Mistral defines the window as the 4,096 positions <i>before</i> the token, so its hop is a full W.)</p>
+<div class="box warn"><b>Why "on paper".</b> This only says a path <i>exists</i>. It's an upper limit, not a promise. To bring a fact from token 1 to token 2,000, every hop along the way has to choose to carry it forward, while each hop is also mixing hundreds of other tokens. Whether a trained model really does that is a separate question, and section 7 tests it.</div>
+
+<h2 id="real-run-the-recall-test">7 · Real run: the recall test</h2>
+<p>Every prompt is about 1,530 tokens: plain filler text, then <i>"Remember this: the secret code is 7294."</i>, then more filler, then <i>"Now answer. The secret code is"</i>. Only the position of the code sentence changes. Greedy decoding, 5 tokens. Each prompt runs twice: the normal model, and the model with its 4 full layers <b>limited to the same 512-token window</b> (the 22 window layers unchanged). Because every prompt is longer than the window, the edit is active in every run, including the inside-the-window control. Distance = tokens from the end of the code sentence to the end of the prompt.</p>
+<div class="box"><b>How the limit works.</b> Attention has a <b>mask</b>: before the scores become weights, every position a token isn't allowed to see gets a huge negative number, which turns into a weight of exactly 0. Causal masking (no peeking at future tokens) works this way, and so does the window: a window layer is a normal attention layer whose mask also blocks keys 512 or more positions back. The library lets you pass one mask for the window layers and one for the full layers. For the "limited" runs I passed the <b>window mask to the full layers too</b>. Nothing else changed: same weights, same RoPE base (1,000,000) in those layers, same prompt.<br><br>
+<b>Checked</b> (1,681-token prompt, last token): full layers give nonzero attention to <b>1,681</b> tokens normally and <b>512</b> when limited; window layers give 512 both ways. And the "normal" runs, which pass masks explicitly, give exactly the same output as running the model with no mask argument at all (largest difference in the logits: 0).</div>
+<div class="tbl"><table><tr><th>code</th><th>distance</th><th>full layers</th><th>answer</th><th></th></tr><tr><td>7294</td><td>162</td><td>normal</td>
+<td><code> 7294</code></td><td>✅</td></tr><tr><td>7294</td><td>162</td><td>limited to 512</td>
+<td><code> 7294</code></td><td>✅</td></tr><tr><td>7294</td><td>368</td><td>normal</td>
+<td><code> 7294</code></td><td>✅</td></tr><tr><td>7294</td><td>368</td><td>limited to 512</td>
+<td><code> 7294</code></td><td>✅</td></tr><tr><td>7294</td><td>716</td><td>normal</td>
+<td><code> 7294</code></td><td>✅</td></tr><tr><td>7294</td><td>716</td><td>limited to 512</td>
+<td><code>. The secret code is</code></td><td>❌</td></tr><tr><td>7294</td><td>1,009</td><td>normal</td>
+<td><code> 7294</code></td><td>✅</td></tr><tr><td>7294</td><td>1,009</td><td>limited to 512</td>
+<td><code>. The secret code is</code></td><td>❌</td></tr><tr><td>7294</td><td>1,409</td><td>normal</td>
+<td><code> 7294</code></td><td>✅</td></tr><tr><td>7294</td><td>1,409</td><td>limited to 512</td>
+<td><code>. The secret code is</code></td><td>❌</td></tr><tr><td>3815</td><td>162</td><td>normal</td>
+<td><code> 3815</code></td><td>✅</td></tr><tr><td>3815</td><td>162</td><td>limited to 512</td>
+<td><code> 3815</code></td><td>✅</td></tr><tr><td>3815</td><td>368</td><td>normal</td>
+<td><code> 3815</code></td><td>✅</td></tr><tr><td>3815</td><td>368</td><td>limited to 512</td>
+<td><code> 3815</code></td><td>✅</td></tr><tr><td>3815</td><td>716</td><td>normal</td>
+<td><code> 3815</code></td><td>✅</td></tr><tr><td>3815</td><td>716</td><td>limited to 512</td>
+<td><code>. The secret code is</code></td><td>❌</td></tr><tr><td>3815</td><td>1,009</td><td>normal</td>
+<td><code> 3815</code></td><td>✅</td></tr><tr><td>3815</td><td>1,009</td><td>limited to 512</td>
+<td><code>. The secret code is</code></td><td>❌</td></tr><tr><td>3815</td><td>1,409</td><td>normal</td>
+<td><code> 3815</code></td><td>✅</td></tr><tr><td>3815</td><td>1,409</td><td>limited to 512</td>
+<td><code>. The secret code is</code></td><td>❌</td></tr><tr><td>6047</td><td>162</td><td>normal</td>
+<td><code> 6047</code></td><td>✅</td></tr><tr><td>6047</td><td>162</td><td>limited to 512</td>
+<td><code> 6047</code></td><td>✅</td></tr><tr><td>6047</td><td>368</td><td>normal</td>
+<td><code> 6047</code></td><td>✅</td></tr><tr><td>6047</td><td>368</td><td>limited to 512</td>
+<td><code> 6047</code></td><td>✅</td></tr><tr><td>6047</td><td>716</td><td>normal</td>
+<td><code> 6047</code></td><td>✅</td></tr><tr><td>6047</td><td>716</td><td>limited to 512</td>
+<td><code>. The secret code is</code></td><td>❌</td></tr><tr><td>6047</td><td>1,009</td><td>normal</td>
+<td><code> 6047</code></td><td>✅</td></tr><tr><td>6047</td><td>1,009</td><td>limited to 512</td>
+<td><code>. The secret code is</code></td><td>❌</td></tr><tr><td>6047</td><td>1,409</td><td>normal</td>
+<td><code> 6047</code></td><td>✅</td></tr><tr><td>6047</td><td>1,409</td><td>limited to 512</td>
+<td><code>. The secret code is</code></td><td>❌</td></tr></table></div>
+<div class="box"><b>Summary:</b> normal model, code beyond the window: 9 of 9 correct. Full layers limited, code inside the window: 6 of 6. Full layers limited, code beyond the window: 0 of 9.</div>
+<div class="box warn"><b>What this does and doesn't show.</b> It shows that in this model, recall beyond the window goes through the full layers: take their long view away and the "13,312 tokens on paper" doesn't help. The control (code inside the window, same prompt length) shows the edited model still works: 6 of 6 right. The drop to 0 of 9 happens exactly when the code leaves the window. It does <b>not</b> show what a model <i>trained</i> with only window layers can do; Gemma was trained with its full layers, and the video says so too. DeepSeek's V4.1 Flash paper cites research (Chen et al., 2025) finding the effective reach of sliding windows "much smaller than the theoretical".</div>
+
+<h3>Second check: Gemma 3 270M</h3>
+<p>Same test on the smaller model (18 layers, 3 full). Normal: 15 of 15. Full layers limited, code inside the window: 4 of 6 (it always answered with a number, but got 3815 wrong twice: "4815" and "4015"). Beyond the window: 0 of 9, every answer "the the the the the". Same split, a little noisier, so the video uses the 1B results.</p>
+
+<h2 id="who-uses-it">8 · Who uses it</h2>
+<div class="tbl"><table><tr><th>Model</th><th>Pattern</th><th>Window</th></tr>
+<tr><td>GPT-3 (2020)</td><td>alternating dense and "locally banded sparse" layers</td><td>not stated</td></tr>
+<tr><td>Mistral 7B (2023)</td><td>window in every layer</td><td>4,096</td></tr>
+<tr><td>Gemma 2 (2024)</td><td>every other layer</td><td>4,096 (global 8,192)</td></tr>
+<tr><td>Gemma 3 (2025)</td><td>5 window : 1 full</td><td>1,024 for 4B/12B/27B; 512 for 1B (and 270M)</td></tr>
+<tr><td>gpt-oss (2025)</td><td>alternating banded window and dense</td><td>128</td></tr>
+<tr><td>DeepSeek V4.1 Flash (2026)</td><td>window in every layer, plus compressed global attention</td><td>not stated in the parts read</td></tr></table></div>
+<p>Gemma 3's paper: moving from 1:1 to 5:1 had "minimal impact on perplexity", and the window "can be reduced significantly without impacting perplexity".</p>
+
+<h2 id="why-it-matters-memory">9 · Why it matters: memory</h2>
+<p>Gemma 3's paper, a 2B model at a 32k-token context: "global only" attention gives a <b>60%</b> memory overhead on top of the model; with 1,024-token windows it drops to <b>less than 15%</b>.</p>
+<p><small><a href="../rope/">RoPE</a> link: Gemma 3 uses RoPE base 1,000,000 for full layers and 10,000 for window layers (paper §5.3, and the config's rope_theta / rope_local_base_freq).</small></p>
+
+
+<h2 id="sources">Sources</h2><ul class="sources">
+<li>Jiang et al., <a href="https://arxiv.org/abs/2310.06825">Mistral 7B</a> (2023): window, rolling buffer, k × W reach, 131K theoretical span</li>
+<li>Gemma Team, <a href="https://arxiv.org/abs/2503.19786">Gemma 3 Technical Report</a> (2025): 5:1 pattern, 1,024 window, memory overhead 60% vs under 15%, RoPE bases</li>
+<li>Gemma Team, <a href="https://arxiv.org/abs/2408.00118">Gemma 2</a> (2024): alternating local and global layers</li>
+<li>OpenAI, <a href="https://arxiv.org/abs/2508.10925">gpt-oss-120b &amp; gpt-oss-20b Model Card</a> (2025): banded window of 128 tokens</li>
+<li>Brown et al., <a href="https://arxiv.org/abs/2005.14165">Language Models are Few-Shot Learners</a> (GPT-3, 2020): alternating dense and locally banded sparse attention</li>
+<li>DeepSeek-AI, DeepSeek-V4.1-Flash technical report (2026), citing Chen et al. (2025) on the effective reach of sliding windows</li>
+<li>Google, <a href="https://github.com/google/gemma_pytorch">gemma_pytorch</a> reference code: per-size window and layer pattern</li>
+<li>Further reading: <a href="https://arxiv.org/abs/2004.05150">Longformer</a>, <a href="https://arxiv.org/abs/1904.10509">Sparse Transformers</a>, <a href="https://arxiv.org/abs/2309.17453">StreamingLLM</a></li>
+<li>Experiments: Gemma 3 1B and 270M (Unsloth re-uploads of Google's weights), run on CPU with Hugging Face transformers</li>
+</ul>
+<div class="endcard"><h3>Prefer watching?</h3><p>The Short covers the same test in under 3 minutes, with every number animated from the real run.</p>
+<div class="actions"><a class="btn ytbtn" data-watch="swa-short" target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.6 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg>Watch on YouTube</a>
+<a class="btn" data-channel target="_blank" rel="noopener">Subscribe</a>
+<a class="btn" href="https://www.linkedin.com/in/rohit-kumar-singh-621818a9/" target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><path d="M20.4 20.5h-3.6v-5.6c0-1.3 0-3-1.8-3s-2.1 1.4-2.1 2.9v5.7H9.3V9h3.4v1.6h.1c.5-.9 1.6-1.8 3.4-1.8 3.6 0 4.3 2.4 4.3 5.5v6.2zM5.3 7.4a2.1 2.1 0 1 1 0-4.1 2.1 2.1 0 0 1 0 4.1zM7.1 20.5H3.5V9h3.6v11.5zM22.2 0H1.8C.8 0 0 .8 0 1.7v20.6c0 .9.8 1.7 1.8 1.7h20.4c1 0 1.8-.8 1.8-1.7V1.7C24 .8 23.2 0 22.2 0z"/></svg>Follow on LinkedIn</a></div></div>
+<a class="next" href="../rope/"><span>Next explainer</span><b>Positional encoding and RoPE, from scratch →</b></a>
+</article>
+</div>
+
+<footer class="site"><div class="in"><span>© 2026 Rohit Kumar Singh</span>
+<span><a href="https://www.linkedin.com/in/rohit-kumar-singh-621818a9/" target="_blank" rel="noopener">LinkedIn</a> · <a href="https://github.com/gotherohit/AIML" target="_blank" rel="noopener">GitHub</a> · <a href="mailto:rohitkrsingh2000@gmail.com">Email</a></span></div></footer>
+<script src="../../assets/site.js"></script>
+</body></html>

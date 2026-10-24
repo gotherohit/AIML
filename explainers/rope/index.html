@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Positional encoding and RoPE, from scratch</title>
+<meta name="description" content="How language models know word order: from sine waves and learned position tables to rotary embeddings (RoPE), with every graph drawn from real runs of Qwen, GPT-2 and SmolLM.">
+<link rel="canonical" href="https://gotherohit.github.io/AIML/explainers/rope/">
+<meta property="og:type" content="article"><meta property="og:title" content="Positional encoding and RoPE, from scratch">
+<meta property="og:description" content="How language models know word order: from sine waves and learned position tables to rotary embeddings (RoPE), with every graph drawn from real runs of Qwen, GPT-2 and SmolLM."><meta property="og:url" content="https://gotherohit.github.io/AIML/explainers/rope/">
+<meta property="og:image" content="https://gotherohit.github.io/AIML/images/covers/rope.jpg"><meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x2='1' y2='1'%3E%3Cstop stop-color='%2335d6c0'/%3E%3Cstop offset='1' stop-color='%23ff6a2b'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../assets/site.css"><style>:root{--accent:#35d6c0;--accent2:#ff6a2b}</style>
+</head><body>
+<header class="topbar"><div class="in">
+<a class="brand" href="../../"><span class="mark">RK</span>Rohit Kumar Singh</a>
+<nav><a class="txt" href="../../#explainers">Explainers</a><a class="txt" href="../../#projects">Projects</a><a class="txt" href="../../#about">About</a>
+<a class="icon" data-channel target="_blank" rel="noopener" aria-label="YouTube"><svg viewBox="0 0 24 24"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.6 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg></a>
+<a class="icon" href="https://www.linkedin.com/in/rohit-kumar-singh-621818a9/" target="_blank" rel="noopener" aria-label="LinkedIn"><svg viewBox="0 0 24 24"><path d="M20.4 20.5h-3.6v-5.6c0-1.3 0-3-1.8-3s-2.1 1.4-2.1 2.9v5.7H9.3V9h3.4v1.6h.1c.5-.9 1.6-1.8 3.4-1.8 3.6 0 4.3 2.4 4.3 5.5v6.2zM5.3 7.4a2.1 2.1 0 1 1 0-4.1 2.1 2.1 0 0 1 0 4.1zM7.1 20.5H3.5V9h3.6v11.5zM22.2 0H1.8C.8 0 0 .8 0 1.7v20.6c0 .9.8 1.7 1.8 1.7h20.4c1 0 1.8-.8 1.8-1.7V1.7C24 .8 23.2 0 22.2 0z"/></svg></a>
+<a class="icon" href="https://github.com/gotherohit/AIML" target="_blank" rel="noopener" aria-label="GitHub"><svg viewBox="0 0 24 24"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.3-3.1-.2-.4-.6-1.6 0-3.2 0 0 1-.3 3.4 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.2.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.5.4.9 1.1.9 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"/></svg></a></nav>
+</div></header>
+<div class="article-head">
+<div class="crumbs"><a href="../../#explainers">Explainers</a> /</div>
+<h1>Positional encoding and RoPE, from scratch</h1>
+<p class="dek">Attention compares words with dot products, and dot products can't see word order. This is how models get it back: sine waves, learned tables, relative biases and finally rotation, with every graph drawn from real model runs.</p>
+<div class="tags" style="margin-bottom:16px"><span class="tag">Positional encoding</span><span class="tag">RoPE</span><span class="tag">Qwen</span><span class="tag">Real experiment</span></div>
+<div class="byline"><span>By <b>Rohit Kumar Singh</b></span><span>October 2026</span><span>31 min read</span></div>
+</div>
+<div class="videos two">
+<div class="yt" data-video="rope-long" data-label="Full video · 22 min" data-title="How LLMs know word order: RoPE explained from scratch" data-cover="../../images/covers/rope.jpg"></div>
+<div class="yt vertical" data-video="rope-short" data-label="Short" data-title="RoPE in 3 minutes" data-cover="../../images/covers/rope-short.jpg"></div>
+</div>
+<div class="layout">
+<details class="toc"><summary>Contents</summary><ol><li><a href="#the-experiment">The experiment</a></li><li><a href="#arrows-and-scores">Arrows and scores</a></li><li><a href="#attention-is-blind-to-order">Attention is blind to order</a></li><li><a href="#why-not-just-add-the-number">Why not just add the number?</a></li><li><a href="#2017-sine-waves">2017: sine waves</a></li><li><a href="#learned-tables">Learned tables</a></li><li><a href="#measuring-the-gap">Measuring the gap</a></li><li><a href="#rotation">Rotation</a></li><li><a href="#many-speeds">Many speeds</a></li><li><a href="#why-it-won">Why it won</a></li><li><a href="#past-the-training-length">Past the training length</a></li><li><a href="#stretching-the-clock">Stretching the clock</a></li><li><a href="#what-s-next-and-the-recap">What&#x27;s next, and the recap</a></li></ol></details>
+<article class="prose">
+
+
+<h2 id="the-experiment">1. The experiment</h2>
+<h3>Two lists of numbers go into a model</h3>
+<p>When you give a model a sentence, it doesn't receive text. It receives two lists of numbers:</p>
+<div class="tbl"><table style="font-size:13px"><tr><th></th><td>The</td><td>cat</td><td>sat</td><td>on</td><td>the</td><td>mat</td><td>because</td><td>it</td><td>was</td></tr>
+<tr><th>token ID</th><td>785</td><td>8251</td><td>7578</td><td>389</td><td>279</td><td>5517</td><td>1576</td><td>432</td><td>572</td></tr>
+<tr class="k"><th>position ID</th><td>0</td><td>1</td><td>2</td><td>3</td><td>4</td><td>5</td><td>6</td><td>7</td><td>8</td></tr></table></div>
+<ul>
+<li><b>Token IDs</b> come from the tokenizer. They say <i>which</i> token each one is (these are Qwen's real IDs).</li>
+<li><b>Position IDs</b> don't come from the text at all. The code that runs the model simply counts. In the transformers library it's one line, identical in Qwen's and GPT-2's code:</li>
+</ul>
+<pre><code>position_ids = torch.arange(number_of_tokens) + past_seen_tokens</code></pre>
+<p><code>arange</code> counts 0, 1, 2… The <code>+ past_seen_tokens</code> matters while the model writes its answer: each new token gets the next number after everything already processed. These position IDs are the <b>only</b> way the model knows which token came first.</p>
+<h3>Where each model uses the position ID</h3>
+<div class="tbl"><table><tr><th>GPT-2 (learned table)</th><th>Qwen (RoPE)</th></tr>
+<tr><td>input = token_table[token ID] <b>+</b> position_table[position ID]<br>Used once, before the first layer.</td>
+<td>input = token_table[token ID], nothing added.<br>The position ID travels to every attention layer and becomes 32 angles, one per pair (position × that pair's speed), that rotate the query and key.</td></tr></table></div>
+<p>This is the "token embedding + positional embedding" step you may know. It's how GPT-2 works. RoPE models skip the addition and use the position ID inside attention instead (chapters 6 and 8 explain both).</p>
+<h3>The test: pass your own position IDs</h3>
+<p>Normally the library makes the position IDs for you. But <code>position_ids</code> is an official input to the model, so you can pass your own. This is the real code from my run:</p>
+<pre><code>ids = tok("The cat sat on the mat because it was",
+          return_tensors="pt").input_ids          # 9 token IDs
+n = ids.shape[1]
+
+def run(pos0):
+    pos = torch.arange(pos0, pos0 + n).unsqueeze(0)  # pos0, pos0+1, ...
+    return model(ids, position_ids=pos).logits[0, -1]
+
+ref  = run(0)        # positions 0 ... 8 (what the library does by default)
+far  = run(20000)    # positions 20,000 ... 20,008, same token IDs
+print((far - ref).abs().max())   # biggest difference in any output</code></pre>
+<p>So the second run is the <b>exact same 9 tokens</b>, same words, same order, with <b>only the position IDs</b> changed:</p>
+<div class="tbl"><table style="font-size:13px"><tr><td>The</td><td>cat</td><td>sat</td><td>on</td><td>the</td><td>mat</td><td>because</td><td>it</td><td>was</td></tr><tr class="q"><td>20,000</td><td>20,001</td><td>20,002</td><td>20,003</td><td>20,004</td><td>20,005</td><td>20,006</td><td>20,007</td><td>20,008</td></tr></table></div>
+<p>Nothing is added in front of the sentence. For GPT-2 I used the same code with positions 500 to 508, because its table stops at 1,023.</p>
+<div class="two"><div><h3>Qwen2.5-0.5B (RoPE)</h3><div class="tbl"><table><tr><th>positions 0–8</th><th></th></tr><tr><td>too</td><td>6.47%</td></tr><tr><td>cold</td><td>6.33%</td></tr><tr><td>a</td><td>4.43%</td></tr></table></div><div class="tbl"><table><tr><th>positions 20,000–20,008</th><th></th></tr><tr><td>too</td><td>6.47%</td></tr><tr><td>cold</td><td>6.33%</td></tr><tr><td>a</td><td>4.43%</td></tr></table></div></div>
+<div><h3>GPT-2 (learned table)</h3><div class="tbl"><table><tr><th>positions 0–8</th><th></th></tr><tr><td>so</td><td>9.67%</td></tr><tr><td>too</td><td>5.46%</td></tr><tr><td>a</td><td>3.76%</td></tr></table></div><div class="tbl"><table><tr><th>positions 500–508</th><th></th></tr><tr><td>the</td><td>15.37%</td></tr><tr><td>am</td><td>11.98%</td></tr><tr><td>in</td><td>10.10%</td></tr></table></div></div></div>
+<p>Qwen gave the identical answer: its biggest difference in any output number was 0.00064, which is just rounding. GPT-2's answer changed. The short reason: RoPE only looks at the <b>gaps</b> between position IDs, and "cat" (20,001) to "sat" (20,002) is still a gap of 1, just like 1 to 2. GPT-2 looks up each position ID in its table, so new IDs mean different numbers added to every word.</p>
+<div class="box"><b>Is this a fair test, or something made up?</b>
+<ul>
+<li><b>It uses a documented input.</b> The transformers docs describe <code>position_ids</code> as "Indices of positions of each input sequence tokens in the position embeddings." Leave it out and the library counts from 0. Pass it and your numbers are used.</li>
+<li><b>Researchers shift position IDs on purpose.</b> PoSE (Zhu et al., 2023) trains on 2K-token texts while skipping their position IDs ahead in chunks, and extended LLaMA to 128K tokens that way. Randomized Positional Encodings (Ruoss et al., 2023, Google DeepMind) gives short sequences position IDs drawn from a much larger range.</li>
+<li><b>It checks a stated property.</b> RoFormer shows the query-key score depends only on the gap m − n. Shifting every position by the same amount keeps every gap, so the output shouldn't change, and it doesn't. GPT-2's positions 500 to 508 are inside its trained table, so it's fed positions it knows, and its answer still changes.</li>
+</ul>
+<b>Its limits:</b> it's a controlled test, not normal use. Real text at position 20,000 would have 20,000 real tokens before it, and their content would change the answer. Here only the labels move. It's one sentence: it illustrates a property, it doesn't benchmark quality.</div>
+<h2 id="arrows-and-scores">2. Arrows and scores</h2>
+<p>Inside a model, every token is a long list of numbers. You can't draw 896 numbers, but you can draw 2. Two numbers are a point on a grid: go 3 along, 2 up. A line from the centre to that point is an <b>arrow</b>. An arrow has a length and a direction.</p>
+<img src="img/fig-01.png" width="526" height="535" loading="lazy" alt="Inside a model, every token is a long list of numbers">
+<p><b>The dot product</b> is the one operation you need. Multiply the two x numbers, multiply the two y numbers, add them up. That's all.</p>
+<img src="img/fig-02.png" width="1006" height="378" loading="lazy" alt="The same recipe on three pairs of arrows: big when they point the same way, 0 at a right angle, negative when opposite.">
+<p class="cap">The same recipe on three pairs of arrows: big when they point the same way, 0 at a right angle, negative when opposite.</p>
+<p>Why does it behave like that? Because the dot product is secretly <b>length × length × an "angle factor"</b>. That factor is called the cosine of the angle. You don't need to know how to compute it, only its shape:</p>
+<img src="img/fig-03.png" width="789" height="408" loading="lazy" alt="Why does it behave like that? Because the dot product is secretly length × length × an &quot;angle factor&quot;">
+<div class="box">The one fact to remember: <b>the dot product depends only on the two lengths and the angle between the arrows.</b> Nothing else. RoPE is built entirely on this.</div>
+<h3>The formulas, with the diagram's numbers</h3>
+<p>For an arrow a = (x, y), its <b>length</b> is <span class="m">|a| = √(x² + y²)</span> (Pythagoras: the arrow is the long side of a right triangle).</p>
+<p>The <b>dot product</b> can be computed two ways, and they always give the same number:</p>
+<pre><code>a · b = a_x × b_x + a_y × b_y          (multiply and add)
+a · b = |a| × |b| × cos(angle)        (lengths and angle)</code></pre>
+<div class="tbl"><table style="font-size:14px"><tr><th>case</th><th>multiply and add</th><th>|a|</th><th>|b|</th><th>angle</th><th>cos</th><th>|a|×|b|×cos</th></tr>
+<tr><td>same way</td><td>3×2.5 + 1×1.5 = 9</td><td>3.16</td><td>2.92</td><td>12.5°</td><td>0.976</td><td>9.00</td></tr><tr><td>right angle</td><td>3×(-1) + 1×3 = 0</td><td>3.16</td><td>3.16</td><td>90.0°</td><td>0.000</td><td>0.00</td></tr><tr><td>opposite</td><td>3×(-2.5) + 1×(-1.2) = -8.7</td><td>3.16</td><td>2.77</td><td>172.8°</td><td>-0.992</td><td>-8.70</td></tr></table></div>
+<p class="cap">Same three arrow pairs as the diagram above. The last column always equals the multiply-and-add result.</p>
+
+<h2 id="attention-is-blind-to-order">3. Attention is blind to order</h2>
+<p>When the model reads <i>sat</i>, attention decides which earlier tokens matter. Each token makes a <span class="q">query</span> arrow (what it's looking for) and a <span class="k">key</span> arrow (what it offers). The score between <i>sat</i> and <i>cat</i> is the dot product of sat's query and cat's key. In Qwen these arrows have 64 numbers per head, not 2, but the rule is the same: multiply number by number, add up.</p>
+<p>The query and key are made from the token's own numbers. So unless we add something, nothing in the score says where a word is. <i>Dog bites man</i> and <i>man bites dog</i> are the same three words in a bag.</p>
+<img src="img/fig-04.png" width="779" height="399" loading="lazy" alt="Perplexity = how surprised the model is by each next word (lower is better)">
+<p class="cap">Perplexity = how surprised the model is by each next word (lower is better). Same 512 tokens, same model; only the position numbers changed.</p>
+<div class="box"><b>Honest twist.</b> A model that only looks backwards (like every chat model) gets a little order information for free: word 10 can see 9 earlier words, word 100 can see 99. Haviv et al. (2022) trained models with <i>no</i> position information and found they were still competitive. My Qwen test is different: Qwen was trained <i>with</i> positions, so taking them away hurts it badly. Every major model still gives attention some position signal.</div>
+
+<h2 id="why-not-just-add-the-number">4. Why not just add the number?</h2>
+<p>The simplest idea: write the position into the token. Token 1 gets +1, token 500 gets +500. The problem is size. Here are real numbers for the token " cat" in Qwen:</p>
+<img src="img/fig-05.png" width="814" height="408" loading="lazy" alt="The simplest idea: write the position into the token">
+<p>The average size of those numbers is 0.011. Adding 500 would bury the meaning completely. Dividing by the text length (so positions run 0 to 1) breaks something else: one step would mean a different amount in a short text and a long one.</p>
+<p>So we want a position signal that <b>stays small</b>, <b>doesn't repeat too early</b>, and still <b>tells neighbours apart</b>.</p>
+
+<h2 id="2017-sine-waves">5. 2017: sine waves</h2>
+<p>The original Transformer paper (Vaswani et al., 2017) used waves. A <b>sine wave</b> swings between +1 and −1 forever, so it never grows. <b>Cosine</b> is the same wave, a quarter-lap ahead. The easiest way to see both: a point running round a circle. Its height is the sine, its sideways position the cosine.</p>
+<img src="img/fig-06.png" width="1060" height="493" loading="lazy" alt="The original Transformer paper (Vaswani et al., 2017) used waves">
+<p>For every position, the paper takes a point that moves a fixed step round a circle per token and writes down its 2 numbers (sine and cosine). One circle isn't enough: a fast one returns to the same spot too soon, and two far-apart positions would look the same. So it uses many circles, each slower than the last, like the second, minute and hour hands of a clock.</p>
+<img src="img/fig-07.png" width="891" height="459" loading="lazy" alt="For every position, the paper takes a point that moves a fixed step round a circle per token and writes down its 2 numbers (sine and cosine)">
+<p>The speeds come from one number, the <b>base</b>: 10,000. Pair <i>i</i> moves <span class="m">1 ÷ 10,000^(2i/d)</span> radians per position. (A radian is about 57.3°; a full lap is 6.28 radians.) The fastest pair moves 1 radian per token, a lap every 6.3 tokens; the slowest of 512 numbers needs over 60,000 tokens per lap.</p>
+<img src="img/fig-08.png" width="904" height="576" loading="lazy" alt="The full pattern for 128 numbers (64 sine, 64 cosine) and 100 positions">
+<p class="cap">The full pattern for 128 numbers (64 sine, 64 cosine) and 100 positions. Each row (position) is different from every other. In each panel, the left side is fast pairs (changing quickly down the rows) and the right side slow pairs (barely changing).</p>
+<p>This pattern is <b>added</b> to each token's numbers before the first layer.</p>
+<div class="box">The paper also notes that for any fixed offset k, the pattern at position+k is a simple (linear) function of the pattern at position. That operation is exactly <i>turning each point further round its circle</i>, a rotation. They hoped the model would learn to use relative positions from it. RoPE later makes this explicit.</div>
+
+<h2 id="learned-tables">6. Learned tables</h2>
+<p>The 2017 paper also tried letting the model learn one vector per position, and reported "nearly identical results". GPT-2 went that way. Here is its real table:</p>
+<img src="img/fig-09.png" width="857" height="544" loading="lazy" alt="The 2017 paper also tried letting the model learn one vector per position, and reported &quot;nearly identical results&quot;">
+<p>The position ID from chapter 1 picks a row of this table, and that row is added to the token's numbers, once, before the first layer. There are exactly 1,024 rows. Asking for position 1,024 isn't "a bit worse"; the lookup fails: <code>IndexError: index out of range in self</code>.</p>
+<h3>Problem 1: adding mixes meaning with address</h3>
+<p>After adding, every token is <i>word + position</i>. The score between two tokens becomes (word₁ + pos₁)·(word₂ + pos₂), which splits into 4 parts:</p>
+<div class="tbl"><table><tr><td>word₁ · word₂</td><td>meaning vs meaning</td></tr><tr><td>pos₁ · pos₂</td><td>address vs address</td></tr><tr><td>word₁ · pos₂</td><td>mixed</td></tr><tr><td>pos₁ · word₂</td><td>mixed</td></tr></table></div>
+<p>(The real formula has learned matrices in between, but the split is the same.) The RoFormer paper cites work (Ke et al., 2020) that found little real relationship between words and absolute positions in the mixed parts: the model spends capacity untangling them.</p>
+<h3>Problem 2: absolute, not relative</h3>
+<p>"The cat sat" means the same at word 37 or word 9,000. What usually matters is the distance between words. An absolute method changes every address when you shift the text, which is exactly why GPT-2's answer changed in chapter 1.</p>
+
+<h2 id="measuring-the-gap">7. Measuring the gap</h2>
+<p>From 2018, people encoded distance directly, inside attention:</p>
+<img src="img/fig-10.png" width="1223" height="470" loading="lazy" alt="From 2018, people encoded distance directly, inside attention:">
+<ul>
+<li><b>Shaw et al., 2018 (Google):</b> a learned vector for each distance (1 back, 2 back…), added into attention. In their experiments distances beyond 16 all shared one vector.</li>
+<li><b>T5 (2019):</b> each distance gets a single learned number added straight to the attention score. Small distances have their own number; larger ones share buckets that widen, and past 128 tokens all distances share one. 32 numbers per head, shared across layers.</li>
+<li><b>ALiBi (Press et al., 2021):</b> nothing learned. Explained below.</li>
+</ul>
+<h3>ALiBi, step by step</h3>
+<div class="box"><b>First: what is a "head"?</b> Each attention layer isn't one attention, it's several running side by side, called <b>heads</b>. Each head has its own query, key and value, so each makes its own decision about which earlier words matter: one head might look at the previous word, another far back. Per token, per layer, there are as many queries as heads, each smaller than the full vector. Qwen2.5-0.5B has 14 heads per layer with 64 numbers each (14 × 64 = 896, the model's full width). Most models in the ALiBi paper had 8 heads per layer.</div>
+<p>The recipe, from the ALiBi paper (section 3), in every layer and every head:</p>
+<ol><li><b>Score as usual:</b> query of the word looking (position i) · key of the word looked at (position j). No position has been added anywhere: not to the embeddings, not to the query or key.</li>
+<li><b>Subtract a penalty:</b> score − <b>slope × distance</b>, where distance = i − j, how many tokens back.</li>
+<li><b>Softmax</b> turns the scores into attention weights, as normal.</li></ol>
+<p>The <b>slope</b> is a fixed number per head, set before training and never learned (the authors tried learning it; it didn't extrapolate as well). With 8 heads: head 1 gets 1/2, head 2 gets 1/4, then 1/8 … down to 1/256.</p>
+<p><b>Worked example:</b> "was" (position 8) looking back at "cat" (position 1), distance 7. Softmax works with e<sup>score</sup>, so subtracting a penalty p multiplies that word's weight by e<sup>−p</sup> (before softmax rescales everything to add up to 100%):</p>
+<div class="tbl"><table><tr><th>head</th><th>slope</th><th>penalty (slope × 7)</th><th>weight kept</th></tr><tr><td>1</td><td>1/2</td><td>3.5</td><td>3%</td></tr><tr><td>2</td><td>1/4</td><td>1.75</td><td>17%</td></tr><tr><td>3</td><td>1/8</td><td>0.875</td><td>42%</td></tr><tr><td>4</td><td>1/16</td><td>0.438</td><td>65%</td></tr><tr><td>5</td><td>1/32</td><td>0.219</td><td>80%</td></tr><tr><td>6</td><td>1/64</td><td>0.109</td><td>90%</td></tr><tr><td>7</td><td>1/128</td><td>0.0547</td><td>95%</td></tr><tr><td>8</td><td>1/256</td><td>0.0273</td><td>97%</td></tr></table></div>
+<img src="img/fig-11.png" width="864" height="476" loading="lazy" alt="The same rule for every distance: each line is one head">
+<p class="cap">The same rule for every distance: each line is one head. Steep heads (head 1) can barely see beyond a few tokens; gentle heads (head 8) barely notice distance. The dashed line is the worked example.</p>
+<p>So ALiBi builds in a range of short-sighted and far-sighted heads without learning anything. And a distance of 3,000 just gets a bigger penalty by the same straight-line rule, so there's nothing "unseen" at longer lengths. That's why it handles texts longer than training well. The difference from RoPE: ALiBi's distance effect is a fixed curve per head, the same whatever the words are; RoPE's comes through the angle between query and key, which the model shapes through what it learns.</p>
+<div class="box warn"><b>ALiBi is a real rival.</b> It was designed to handle texts longer than training, and its paper shows it does this better than sinusoidal, rotary and T5. BLOOM (176B) chose it, and its team reported that ALiBi trained more smoothly and beat both learned and rotary embeddings in their tests.</div>
+<p>All three add an extra term to the attention scores, on top of the plain dot product. RoPE goes a different way: it changes the arrows and leaves the dot product alone.</p>
+
+<h2 id="rotation">8. Rotation</h2>
+<p><b>Rotating</b> an arrow means turning it round the centre, like a clock hand. Its direction changes; its <b>length never does</b> (it stays on the dotted circle).</p>
+<img src="img/fig-12.png" width="526" height="535" loading="lazy" alt="Rotating an arrow means turning it round the centre, like a clock hand">
+<p>On the 2 numbers (x, y), turning by an angle a is just:</p>
+<p class="m" style="display:block;padding:10px">new x = x·cos(a) − y·sin(a)<br>new y = x·sin(a) + y·cos(a)</p>
+<p>That's all the "rotation matrix" in the RoFormer paper is: this recipe, written as a table of cos and sin.</p>
+<h3>The same thing as a matrix multiplication</h3>
+<p>Write the recipe as a 2 × 2 grid of numbers (a <b>rotation matrix</b>) and multiply it by the pair:</p>
+<pre><code>[ new x ]   [ cos(a)  −sin(a) ] [ x ]   [ x·cos(a) − y·sin(a) ]
+[ new y ] = [ sin(a)   cos(a) ] [ y ] = [ x·sin(a) + y·cos(a) ]</code></pre>
+<p>Matrix multiplication just means: each row of the grid times the column (x, y), number by number, added up. Row 1 gives the new x, row 2 the new y, which is exactly the recipe above.</p>
+<p><b>Worked on the real numbers:</b> pair 7 of sat's query (Qwen, layer 0, head 5) is (x, y) = (0.180, -10.879). This pair turns 4.30° per position, and sat is at position 2, so a = 2 × 4.30° = 8.59°: cos(a) = 0.9888, sin(a) = 0.1494.</p>
+<pre><code>[ 0.9888  -0.1494 ]   [   0.180 ]
+[ 0.1494   0.9888 ] × [ -10.879 ]
+
+row 1: 0.180×0.9888 − (-10.879)×0.1494
+     = 1.803   (new x)
+row 2: 0.180×0.1494 + (-10.879)×0.9888
+     = -10.730   (new y)</code></pre>
+<p>I checked this against Qwen's own code: it produces the same two numbers.</p>
+<h3>All 64 numbers at once</h3>
+<p>A head has 32 pairs, each with its own angle. Put the 32 little 2 × 2 grids into one big 64 × 64 matrix, with zeros everywhere else, and one multiplication turns the whole query:</p>
+<img src="img/fig-13.png" width="945" height="1337" loading="lazy" alt="Real speeds of a Qwen head at position 100">
+<img src="img/fig-14.png" width="655" height="709" loading="lazy" alt="Real speeds of a Qwen head at position 100">
+<p class="cap">Real speeds of a Qwen head at position 100. Zoom: each orange box is one pair's own 2 × 2 rotation grid; everything outside the boxes is 0. Top: the paper's layout, where the 2 × 2 blocks sit along the diagonal. Bottom: Qwen's code pairs number i with number i + 32, so the same blocks are spread out (the cos values on the diagonal, the sin values on two side lines). Same rotation, numbers stored in a different order. Fast pairs (top-left) have cos and sin swinging between −1 and 1; slow pairs (bottom-right) are almost exactly cos = 1, sin = 0: barely turned. Multiplying sat's query by the bottom matrix gives exactly what Qwen computes (checked).</p>
+<p>Almost every number in that matrix is 0, so real code never builds it. RoFormer itself points out that multiplying by the full matrix is wasteful and gives a cheaper way to compute the same thing. Qwen's code (transformers library) is these lines:</p>
+<pre><code>def rotate_half(x):
+    x1 = x[..., : x.shape[-1] // 2]      # first 32 numbers
+    x2 = x[..., x.shape[-1] // 2 :]      # last 32 numbers
+    return torch.cat((-x2, x1), dim=-1)
+
+q_embed = (q * cos) + (rotate_half(q) * sin)
+k_embed = (k * cos) + (rotate_half(k) * sin)</code></pre>
+<p>For pair i, the first line gives new x = x·cos − y·sin and new y = y·cos + x·sin: the same two rows of the 2 × 2 matrix, done for all 32 pairs at once with no zeros multiplied.</p>
+<h3>First: what is a "pair"?</h3>
+<p>A query or key is not 2 numbers. In Qwen2.5-0.5B, each head's query and key are lists of <b>64 numbers</b>. RoPE groups those numbers <b>two at a time</b>: 64 numbers ÷ 2 = <b>32 pairs</b>. Each pair is its own little 2-number arrow on its own x–y grid, and RoPE turns each pair separately, at its own speed. It never turns the 64 numbers as one big arrow.</p>
+<img src="img/fig-15.png" width="1126" height="374" loading="lazy" alt="The real 64 numbers of sat&#x27;s query (layer 0, head 5)">
+<p class="cap">The real 64 numbers of sat's query (layer 0, head 5). Qwen's code pairs number i with number i + 32, so each column is one pair. (The RoFormer paper pairs neighbours instead, 0&1, 2&3…; same rotation, numbers stored in a different order.)</p>
+<div class="box"><b>Two things to keep straight:</b>
+<ul><li><b>"Pair 7"</b> means the <b>7th of the 32 two-number groups inside one vector</b> (numbers 6 and 38, counting from 0). It does <i>not</i> mean "the query and the key". The query has its own pair 7, the key has its own pair 7, and the score compares query pair 7 with key pair 7.</li>
+<li><b>Why the pictures show only 2 numbers:</b> an x–y grid can draw exactly one pair. So each rotation picture below shows one of the 32 pairs (pair 7). All 32 pairs are turned at the same moment, and the full score adds all 32 up (shown further down).</li></ul></div>
+<h3>Why pairs? Could we rotate all 64 numbers at once?</h3>
+<p><b>Beyond 2 dimensions, "rotate by one angle" doesn't exist on its own.</b> In 2D, one angle turns the whole arrow. In 3D, every rotation has an axis that stays still: you're really turning inside one flat plane. From 4D up, you can turn in several separate planes at once, each with its own angle. 64 numbers have room for at most <b>32</b> separate planes (64 ÷ 2). So any rotation of 64 numbers is described by 32 planes and 32 angles. Turning just one plane changes only 2 of the 64 numbers (checked: exactly 2 changed).</p>
+<h3>Plain planes and tilted planes, in 3D</h3>
+<p>A <b>plane</b> here is any flat sheet through the centre. Turning "in a plane" means the point swings around inside that sheet; the direction at right angles to it (the axis) stays still.</p>
+<img src="img/fig-16.png" width="511" height="1681" loading="lazy" alt="A plane here is any flat sheet through the centre">
+<div class="tbl"><table style="font-size:14px"><tr><th>picture</th><th>start</th><th>after a 90° turn</th></tr>
+<tr><td>1. plain plane (x, y, z)</td><td>(1.00, 0.00, 0.00)</td><td>(0.00, 1.00, 0.00)</td></tr><tr><td>2. tilted plane (x, y, z)</td><td>(1.00, 0.00, 0.00)</td><td>(0.33, 0.91, -0.24)</td></tr><tr><td>3. tilted, new viewpoint (new x, new y, up)</td><td>(0.82, 0.00, 0.58)</td><td>(-0.00, 0.82, 0.58)</td></tr></table></div>
+<p class="cap">Exact rotations of the same point (1, 0, 0) by 90°. White arrow: start. Gold arrow and arc: after the turn. Dotted circle: the full path. Shaded disc: the plane the point turns in. Dashed line: the axis that stays still.</p>
+<ul><li><b>Left, plain plane:</b> spin around the vertical z axis. The point moves in a flat sheet lined up with x and y, so only x and y change; z stays the same. This is what RoPE does: pair 7 is the plane made of exactly two of the 64 slots (6 and 38), so only those two numbers change.</li>
+<li><b>Middle, tilted plane:</b> spin around a slanted axis (pointing equally between x, y and z). The point still moves in one flat sheet with one angle, but the sheet is tilted, so x, y and z all change at once. In 64 dimensions, a tilted plane mixes many of the 64 slots, so turning it changes many numbers.</li>
+<li><b>Right, same tilted turn, new viewpoint:</b> describe the same motion with the slanted axis as "up". Now it's a plain turn again: only the first two numbers change, and "up" stays the same. The tilt was never a different kind of rotation, only a different way of lining up the axes. Changing to that viewpoint is what the matrix S below does.</li></ul>
+<p><b>You can still build one big 64 × 64 rotation.</b> Take a 64 × 64 "generator" matrix A of a special kind (skew-symmetric: flipping it over its diagonal gives −A) and use <span class="m">R(position) = exp(position × A)</span>, the matrix version of "cos and sin of an angle". I did this with a random A:</p>
+<ul><li>all 4,096 entries of the matrix are non-zero: it mixes every number with every other;</li>
+<li>lengths are kept: 7.8593 before, 7.8593 after turning by 1,000 positions;</li>
+<li>only the gap survives: score at positions (7, 3) = 1.6485, at (507, 503) = 1.6485.</li></ul>
+<p>So it works, and has RoPE's key property.</p>
+<p><b>But inside, it is 32 pair-turns.</b> Taking A apart (its "real Schur form") gives R = S × (32 separate 2 × 2 turns) × Sᵀ, where S is a fixed tilt that just picks which 32 planes to turn in. Rebuilding R this way matches it to within 4e-15.</p>
+<img src="img/fig-17.png" width="681" height="1218" loading="lazy" alt="Top: the big rotation for position 60">
+<p class="cap">Top: the big rotation for position 60. Bottom: the same rotation viewed through the tilt S: just 32 little 2 × 2 blocks on the diagonal, like RoPE's own matrix.</p>
+<p><b>Why it isn't done: the tilt adds nothing the model can't already learn.</b> Queries and keys are made by learned weight matrices. A fixed tilt can be folded into those weights. I checked: plain pair-by-pair RoPE on tilt-adjusted vectors gives the same score, 1.6485 (difference 7e-15). The LieRE paper (Ostmeier et al., 2024), which tried exactly this "learn a full rotation" idea, proves the same in its Appendix A: for positions along a line, as in text, it "reduces to RoPE with learnable phases". "Rethinking RoPE" (Liu et al., 2025) shows more generally that any valid RoPE is a set of turning planes, and anything beyond the block-by-block form is "a change of basis".</p>
+<h3>What the model learns</h3>
+<p>The model doesn't receive a query with a fixed meaning in each slot. It <b>makes</b> the query: query = W<sub>q</sub> × the token's numbers, where W<sub>q</sub> is a learned matrix (and W<sub>k</sub> for the key). So W<sub>q</sub> decides what information lands in slots 6 and 38, that is, what goes into pair 7.</p>
+<ul><li>RoPE fixes the planes (slots 0&amp;32, 1&amp;33, …) and the speeds (pair 1 fastest … pair 32 slowest).</li>
+<li>The model learns W<sub>q</sub> and W<sub>k</sub> so that each kind of information lands in a pair with a useful speed: things that should only match nearby words in fast pairs, things that should match at any distance in slow pairs, which barely turn.</li>
+<li>Tilted planes would just need the information sent into tilted directions. Making tilted mixtures is exactly what a matrix like W<sub>q</sub> does, so the tilt and W<sub>q</sub> merge into one learned matrix. That's the folding checked above.</li></ul>
+<p>That's what we see in the real model: in Qwen, the slowest pairs carry query numbers about 3.4× bigger than the fastest (chapter 10), so W<sub>q</sub> puts a lot of information into the barely-turning pairs, the same picture DeepMind found in Gemma.</p>
+<p><b>And pairs are far cheaper:</b> a dense 64 × 64 rotation costs 4,096 multiplications per vector (plus a matrix exponential for every position); pair-by-pair RoPE costs 128, using cos and sin from a simple formula. That's 32× less, in every head of every layer, for every token.</p>
+<div class="box"><b>Where full rotations do help:</b> when a position has several directions, such as row and column in an image, or x, y, z in 3D. Then the tilt depends on the direction and can't be folded into the weights. That's where LieRE and Rethinking RoPE report gains (see chapter 13's image part). For text, turning in pairs isn't a shortcut that loses something; it's the simplest form any position-rotation takes.</div>
+<h3>The RoPE idea (Su et al., 2021)</h3>
+<ul><li>Query of the word at position <b>m</b>: turn <b>every pair</b> by <b>m</b> steps of that pair's own speed (pair i turns by m × θ<sub>i</sub>).</li><li>Key of the word at position <b>n</b>: turn every pair by <b>n</b> steps of its own speed (n × θ<sub>i</sub>).</li></ul>
+<div class="box"><b>One rotation, 32 angles: the precise wording.</b> "Rotated by an angle" is exact for <b>one pair</b>. For the <b>whole</b> 64-number query it is one rotation (lengths kept, one 64 × 64 rotation matrix), but <b>not by one angle</b>: it is 32 turns in 32 planes, each by its own angle m × θ<sub>1</sub>, m × θ<sub>2</sub> … m × θ<sub>32</sub>, all set by the single number m. So the accurate sentence is "RoPE rotates each query and key by an amount set by its position", not "by an angle". The papers say it this way too: RoFormer uses a single angle mθ only in its 2-number case, and writes the general case as a block-diagonal matrix with angles mθ<sub>1</sub> … mθ<sub>d/2</sub>; GPT-NeoX describes it as a block-diagonal matrix "with the block of index i being a 2D rotation by xθ<sub>i</sub>". (Chapter 9 shows why the angles must differ.)</div>
+<p>Now use the one fact from chapter 2, <b>pair by pair</b>: the dot product of two pairs depends only on their lengths and the angle between them. Rotation keeps lengths. And if the query's pair turns m steps and the key's pair n steps (same speed, it's the same pair number), the angle between them changes by <b>m − n</b> steps. The positions cancel; <b>only the gap is left.</b></p>
+<img src="img/fig-18.png" width="831" height="911" loading="lazy" alt="Real numbers: pair 7 of 32 (numbers 6 and 38) of the actual query for &quot;sat&quot; and of the key for &quot;cat&quot;, from Qwen&#x27;s first layer, head 5">
+<p class="cap">Real numbers: pair 7 of 32 (numbers 6 and 38) of the actual query for "sat" and of the key for "cat", from Qwen's first layer, head 5. The arrows point in completely different directions at each position, but the angle between them is identical. The full score uses all 64 numbers and is the same 142.68 every time.</p>
+<h3>The RoPE score as a formula</h3>
+<p>For one pair, with the query at position m and the key at position n:</p>
+<pre><code>pair score = |q| × |k| × cos( own angle + (m − n) × step )</code></pre>
+<p>Pair 7 (of 32) of sat's real query and of cat's real key, sat at 2, cat at 1:</p>
+<pre><code>|q| = 10.881   |k| = 8.720
+own angle = -80.7°   step = 4.30°   m − n = 1
+pair score = 10.881 × 8.720 × cos(-80.7° + 1 × 4.30°)
+           = 22.30</code></pre>
+<p>The <b>full score</b> adds up all 32 pairs, each with its own lengths, own angle and own step, and attention then divides by √64 = 8 (the standard scaling in every Transformer):</p>
+<pre><code>score = ( pair 1 + pair 2 + … + pair 32 ) ÷ 8
+      = 1141.44 ÷ 8
+      = 142.68</code></pre>
+<img src="img/fig-19.png" width="1130" height="738" loading="lazy" alt="Every pair of the real vectors at once">
+<p class="cap">Every pair of the real vectors at once. Each little grid is one pair (arrows scaled to fit each grid; real lengths are in the table). Each pair has its own angle and its own score; pair 7 (orange frame) is the one in the pictures above.</p>
+<details><summary >All 32 pairs as a table (click to open)</summary>
+<div class="tbl"><table style="font-size:13px"><tr><th>pair</th><th>numbers</th><th>step per position</th><th>|q|</th><th>|k|</th><th>pair score</th></tr>
+<tr><td>1</td><td>0 & 32</td><td>57.3°</td><td>2.05</td><td>10.91</td><td>-13.99</td></tr><tr><td>2</td><td>1 & 33</td><td>37.2°</td><td>6.75</td><td>9.59</td><td>51.12</td></tr><tr><td>3</td><td>2 & 34</td><td>24.2°</td><td>8.77</td><td>7.55</td><td>27.76</td></tr><tr><td>4</td><td>3 & 35</td><td>15.7°</td><td>3.73</td><td>6.84</td><td>13.25</td></tr><tr><td>5</td><td>4 & 36</td><td>10.2°</td><td>8.12</td><td>0.26</td><td>-1.51</td></tr><tr><td>6</td><td>5 & 37</td><td>6.62°</td><td>4.02</td><td>9.35</td><td>17.52</td></tr><tr class=q><td>7</td><td>6 & 38</td><td>4.3°</td><td>10.88</td><td>8.72</td><td>22.30</td></tr><tr><td>8</td><td>7 & 39</td><td>2.79°</td><td>0.86</td><td>9.52</td><td>-8.16</td></tr><tr><td>9</td><td>8 & 40</td><td>1.81°</td><td>2.58</td><td>0.20</td><td>-0.48</td></tr><tr><td>10</td><td>9 & 41</td><td>1.18°</td><td>1.69</td><td>0.24</td><td>0.27</td></tr><tr><td>11</td><td>10 & 42</td><td>0.764°</td><td>2.77</td><td>0.06</td><td>-0.17</td></tr><tr><td>12</td><td>11 & 43</td><td>0.496°</td><td>4.96</td><td>0.17</td><td>0.16</td></tr><tr><td>13</td><td>12 & 44</td><td>0.322°</td><td>1.51</td><td>26.03</td><td>19.89</td></tr><tr><td>14</td><td>13 & 45</td><td>0.209°</td><td>3.07</td><td>0.13</td><td>0.36</td></tr><tr><td>15</td><td>14 & 46</td><td>0.136°</td><td>1.10</td><td>28.83</td><td>28.74</td></tr><tr><td>16</td><td>15 & 47</td><td>0.0882°</td><td>4.77</td><td>0.74</td><td>1.96</td></tr><tr><td>17</td><td>16 & 48</td><td>0.0573°</td><td>5.67</td><td>0.30</td><td>0.61</td></tr><tr><td>18</td><td>17 & 49</td><td>0.0372°</td><td>5.92</td><td>2.42</td><td>14.14</td></tr><tr><td>19</td><td>18 & 50</td><td>0.0242°</td><td>1.06</td><td>28.24</td><td>29.39</td></tr><tr><td>20</td><td>19 & 51</td><td>0.0157°</td><td>2.08</td><td>24.29</td><td>42.70</td></tr><tr><td>21</td><td>20 & 52</td><td>0.0102°</td><td>3.42</td><td>8.94</td><td>30.03</td></tr><tr><td>22</td><td>21 & 53</td><td>0.00662°</td><td>2.81</td><td>7.75</td><td>18.29</td></tr><tr><td>23</td><td>22 & 54</td><td>0.0043°</td><td>2.89</td><td>16.26</td><td>46.04</td></tr><tr><td>24</td><td>23 & 55</td><td>0.00279°</td><td>2.40</td><td>18.31</td><td>42.46</td></tr><tr><td>25</td><td>24 & 56</td><td>0.00181°</td><td>1.64</td><td>33.50</td><td>52.15</td></tr><tr><td>26</td><td>25 & 57</td><td>0.00118°</td><td>3.97</td><td>17.37</td><td>49.65</td></tr><tr><td>27</td><td>26 & 58</td><td>0.000764°</td><td>1.83</td><td>34.75</td><td>62.58</td></tr><tr><td>28</td><td>27 & 59</td><td>0.000496°</td><td>1.68</td><td>52.51</td><td>85.54</td></tr><tr><td>29</td><td>28 & 60</td><td>0.000322°</td><td>1.52</td><td>41.13</td><td>54.43</td></tr><tr><td>30</td><td>29 & 61</td><td>0.000209°</td><td>1.03</td><td>117.53</td><td>121.07</td></tr><tr><td>31</td><td>30 & 62</td><td>0.000136°</td><td>1.29</td><td>134.90</td><td>167.08</td></tr><tr><td>32</td><td>31 & 63</td><td>8.82e-05°</td><td>1.19</td><td>139.38</td><td>166.27</td></tr>
+<tr><td colspan="5"><b>sum of all 32</b></td><td><b>1141.44</b></td></tr></table></div></details>
+<p class="cap">Computed from the real vectors pair by pair; it matches the 142.68 from Qwen's own code. Notice what's missing from the formula: m and n never appear alone, only m − n.</p>
+<div class="box"><b>So what exactly is left?</b> The positions themselves cancel out, but the words' own angle stays:<br>
+<b>angle between = the words' own angle + (m − n) × step</b><br>
+Real numbers for this pair: the words' own angle is -80.7° (the minus sign only says which arrow is ahead), the step is 4.30° per position and the gap is 1, so the angle becomes -80.7° + 1 × 4.30° = -76.4°: the arrows are 76.4° apart. At 102 and 101, or 5,002 and 5,001, the gap is still 1, so it's still 76.4°.<br>
+The words' own angle comes from what the words are; the gap × step comes from how far apart they are. Both end up in one score: length × length × cos(total angle). Each of the 32 pairs does this with its own angle and its own step, and the full score adds them up.</div>
+<h3>Why not just use the gap directly?</h3>
+<p>If only the gap matters, why rotate at all? Why not give the model m − n? Because <b>no token knows the gap</b>. "sat" only knows it's at 2; "cat" only knows it's at 1. The gap belongs to the <i>pair</i>. And attention works in two steps:</p>
+<ol><li><b>Step 1, per token:</b> each token makes its own query and key. Here a token knows only its own position.</li>
+<li><b>Step 2, all pairs at once:</b> one big matrix multiplication scores every query against every key. 1,000 tokens means 1,000 × 1,000 = a million pairs.</li></ol>
+<img src="img/fig-20.png" width="798" height="792" loading="lazy" alt="Our 9-token sentence: every cell is one score computed in step 2">
+<p class="cap">Our 9-token sentence: every cell is one score computed in step 2. The number is that pair's gap. sat → cat (gap 1) is highlighted.</p>
+<p><b>Using the gap directly</b> means reaching into step 2 and adding something to every cell. That's exactly what T5 and ALiBi do (chapter 7): an extra term on the score matrix.</p>
+<p><b>RoPE works only in step 1.</b> Each token turns its own query and key by its own position. Step 2 stays a plain dot product, and the gap comes out of it by itself, as the angle formula above shows.</p>
+<ul><li><b>Step 2 is untouched:</b> the attention computation itself doesn't change.</li>
+<li><b>Stored keys stay valid:</b> while the model writes, it keeps every past key (the KV cache). With RoPE a key is turned once, by its own position, and never needs updating, because its position never changes.</li>
+<li><b>It works where there's no score matrix:</b> RoFormer points out that some fast "linear attention" variants never build the pair-by-pair matrix, so there is nowhere to add a gap term. Rotation still works, because it only touches each token's own vector.</li></ul>
+<p><b>Why rotation, of all things?</b> RoFormer sets it up as a puzzle: change each query and key using only its own position, so that their dot product depends only on the words and the gap. Rotation is the solution they derive. It also never changes a length, so position doesn't distort the content.</p>
+<p>Try it yourself with the same real pair:</p>
+<canvas id="cv" width="420" height="420"></canvas>
+<div class="row" id="ml"></div><input id="m" type="range" min="0" max="300" value="2">
+<div class="row" id="nl"></div><input id="n" type="range" min="0" max="300" value="1">
+<p class="row" id="out" style="text-align:center"></p>
+<div class="box">This is why Qwen ignored the shift to position 20,000. In Qwen the position ID is never added to anything: in every attention layer it becomes the 32 angles (m × each pair's speed) above. There's no position information anywhere else, so shifting every position ID by 20,000 keeps every gap, and every score.</div>
+
+<h2 id="many-speeds">9. Many speeds</h2>
+<p>One speed has the same problem as one sine wave. Qwen's fastest pair turns 1 radian per token, so after 44 tokens it is back within about 1° of its start:</p>
+<img src="img/fig-21.png" width="479" height="504" loading="lazy" alt="One speed has the same problem as one sine wave">
+<p>So RoPE uses the 2017 trick: each head's 64 numbers are split into 32 pairs, and each pair turns at its own speed from the same kind of formula, <span class="m">base^(−2i/64)</span> radians per token.</p>
+<img src="img/fig-22.png" width="860" height="476" loading="lazy" alt="So RoPE uses the 2017 trick: each head&#x27;s 64 numbers are split into 32 pairs, and each pair turns at its own speed from the same kind of formula, base^">
+<p>Qwen's base is 1,000,000: the fastest pair laps every 6.3 tokens, the slowest every ~4.08 million tokens. Fast pairs tell neighbours apart; slow pairs barely move between neighbours but keep counting over thousands of tokens without wrapping.</p>
+<h3>Why not the same angle for every pair?</h3>
+<p>If one position must turn the vector, why not turn all 32 pairs by the same angle? That is a valid rotation, and it would still keep "only the gap matters". The problem is what it can't tell apart. Real sat/cat vectors from Qwen, scored at different gaps:</p>
+<div class="tbl"><table style="font-size:14px"><tr><th>gap</th><th>real RoPE (32 speeds)</th><th>all pairs fast (1 rad/token)</th><th>all pairs slowest</th></tr>
+<tr><td>0</td><td>142.96</td><td>142.96</td><td>142.96</td></tr><tr><td>1</td><td>142.68</td><td>109.11</td><td>142.96</td></tr><tr><td>2</td><td>140.64</td><td>-25.06</td><td>142.96</td></tr><tr><td>44</td><td>117.42</td><td>143.61</td><td>142.97</td></tr><tr><td>1,000</td><td>117.55</td><td>111.72</td><td>143.02</td></tr><tr><td>4,000</td><td>84.22</td><td>-130.24</td><td>143.19</td></tr></table></div>
+<img src="img/fig-23.png" width="967" height="580" loading="lazy" alt="If one position must turn the vector, why not turn all 32 pairs by the same angle? That is a valid rotation, and it would still keep &quot;only the gap mat">
+<ul><li><b>All pairs fast:</b> the whole vector comes back almost to its start every 2π ≈ 6.28 tokens. At gap 44 every one of the 32 pairs is within 1.0° of gap 0, so a word 44 tokens back scores like the same position (143.61 vs 142.96), and again at 88, 145…</li>
+<li><b>All pairs slow:</b> almost nothing turns; gaps 0, 1, 2 and 44 all score 142.96. Neighbours can't be told apart.</li>
+<li><b>Real RoPE:</b> fast pairs separate neighbours, slow pairs keep counting. Checking every gap up to 32,768 (Qwen's context length), the set of 32 angles never comes back to its start: the closest any gap gets is still 57.3° off in at least one pair. Every gap has its own fingerprint, like a clock whose three hands never show the same pattern twice in a day.</li></ul>
+<div class="box">Same circles as 2017, used differently: not added to the word, but used to turn the query and key inside every attention layer. The values (the content passed along) are never rotated.</div>
+
+<h2 id="why-it-won">10. Why it won</h2>
+<ul>
+<li><b>LLaMA (2023):</b> "We remove the absolute positional embeddings, and instead, add rotary positional embeddings (RoPE)… at each layer of the network."</li>
+<li><b>PaLM (2022):</b> "RoPE embeddings have been shown to have better performance on long sequence lengths."</li>
+<li><b>GPT-NeoX-20B (2022):</b> rotary instead of GPT's learned position embeddings.</li>
+</ul>
+<p>What you get: relative distance built into the score; no table and no learned position weights, so nothing runs out; the word's numbers never mixed with an address; attention stays a plain dot product.</p>
+<div class="box warn"><b>But not "simply better".</b> BLOOM's team found ALiBi better in their tests. The evidence is mixed, and a huge number of later open models were built on LLaMA's recipe.</div>
+<p><b>A common myth</b> is that RoPE works because attention fades with distance. Barbero et al. (Oxford and Google DeepMind, 2024) looked inside Gemma 7B and argued that's unlikely to be the core reason. They found the model uses the <b>fastest</b> pairs to build sharp positional patterns (for example a "previous-token" head) and seems to use the <b>slowest</b> pairs, which barely turn, to carry meaning.</p>
+<img src="img/fig-24.png" width="838" height="425" loading="lazy" alt="My check on Qwen: the slowest pairs carry the biggest numbers">
+<p class="cap">My check on Qwen: the slowest pairs carry the biggest numbers. The same picture.</p>
+
+<h2 id="past-the-training-length">11. Past the training length</h2>
+<h3>First: why can a model run on any length at all?</h3>
+<p>Because no weight in the model has a size tied to the number of tokens. These are the real shapes in Qwen2.5-0.5B's file:</p>
+<div class="tbl"><table><tr><th>weight</th><th>shape</th></tr><tr><td>token embeddings</td><td>151,936 × 896</td></tr><tr><td>query projection</td><td>896 × 896</td></tr><tr><td>key projection</td><td>128 × 896</td></tr><tr><td>value projection</td><td>128 × 896</td></tr><tr><td>attention output</td><td>896 × 896</td></tr><tr><td>MLP up-projection</td><td>4,864 × 896</td></tr></table></div>
+<p>Every size is the vocabulary (151,936), the model's width (896), or an internal width. I also searched every weight in the file for a dimension of 32,768 (Qwen's context length): there is none. The weights are applied to each token on its own: 9 tokens means 9 multiplications by the same 896 × 896 matrix, 100,000 tokens means 100,000.</p>
+<p>The things that do grow with length are built while the model runs, not stored: the N × N attention score grid (chapter 8) and the KV cache (one key and value per token per layer). So the only kinds of length limit are:</p>
+<ol><li><b>A learned position table.</b> GPT-2's is 1,024 × 768, the one weight with a length dimension. Position 1,024 doesn't exist, so it crashes.</li>
+<li><b>What training covered.</b> RoPE and ALiBi compute position from a formula, so any position works mechanically. The question is whether the results are any good (below).</li>
+<li><b>Memory and compute</b> on the machine running it.</li></ol>
+<h3>Then why do context windows and output limits exist?</h3>
+<p><b>Quality.</b> A model is only reliable up to the lengths it was trained and tested on. Llama 3's paper grew the context in 6 stages, from 8K to 128K tokens, checking at each stage that the model had adapted (including "needle in a haystack" tests) before moving on. The advertised context window is the length that was trained and checked, not a matrix size.</p>
+<p><b>Memory.</b> The KV cache stores a key and a value for every token in every layer. Size per token = 2 × key/value heads × head size × layers, at 2 bytes per number:</p>
+<div class="tbl"><table><tr><th>model</th><th>numbers per token</th><th>per token</th><th>at full context</th></tr><tr><td>Qwen2.5-0.5B</td><td>2 × 2 × 64 × 24 = 6,144</td><td>12 KB</td><td>32,768: 384 MB</td></tr><tr><td>Llama 3 70B</td><td>2 × 8 × 128 × 80 = 163,840</td><td>320 KB</td><td>128K: 40 GB</td></tr></table></div>
+<p class="cap">Llama 3 70B's sizes are from its paper (80 layers, width 8,192, 64 heads, 8 key/value heads, so a head size of 128); Qwen's from its config. GB here means 1,024³ bytes. That's per conversation, on top of the model's own weights; a server running many conversations at once runs out of GPU memory quickly.</p>
+<p><b>Compute and time.</b> Every token is compared with every earlier one, so doubling the length roughly quadruples the attention work.</p>
+<p><b>Output limits</b> are separate. Output is produced one token at a time, and each token is a full pass through the model that reads the whole KV cache so far, so 4,000 output tokens means 4,000 passes in a row. In most APIs input + output must also fit in the context window together, and models are trained mostly on responses up to some length. (Providers such as Anthropic and OpenAI publish their limits, but not every reason behind each number; these are the general engineering reasons.)</p>
+<div class="box">The weights decide what the model <i>can</i> compute at any length. Training decides how long it stays <i>good</i>. Memory and compute decide how long is <i>affordable</i>. A learned position table is the one case where the limit really is a matrix size, and that's a problem RoPE removed.</div>
+<h3>What happens past the training length</h3>
+<p>SmolLM-135M uses RoPE with base 10,000 and was trained on 2,048-token texts. I fed it 8,192 tokens of Pride and Prejudice and measured the loss at every position (red line below): fine up to 2,048, then it explodes. Perplexity 16.6 on the first part, 716.6 after.</p>
+<p><b>But RoPE only sees gaps, so why does length matter?</b> Because of the slow pairs:</p>
+<img src="img/fig-25.png" width="872" height="425" loading="lazy" alt="But RoPE only sees gaps, so why does length matter? Because of the slow pairs:">
+<p>11 of SmolLM's 32 pairs never complete one lap in 2,048 tokens, so in training they only ever saw part of their circle. Past 2,048 they reach angles the model has never seen (the YaRN paper makes this argument). The Position Interpolation paper showed that such extrapolation can produce catastrophically large attention scores.</p>
+
+<h2 id="stretching-the-clock">12. Stretching the clock</h2>
+<p>Because positions are just angles, they can be squeezed. That's impossible with a learned table: you can't squeeze rows that don't exist.</p>
+<img src="img/fig-26.png" width="924" height="493" loading="lazy" alt="Second graph: the actual new speed of each pair under each method, from the same formulas the transformers library uses, for a 4× stretch.">
+<img src="img/fig-27.png" width="857" height="442" loading="lazy" alt="Second graph: the actual new speed of each pair under each method, from the same formulas the transformers library uses, for a 4× stretch.">
+<p class="cap">Second graph: the actual new speed of each pair under each method, from the same formulas the transformers library uses, for a 4× stretch.</p>
+<div class="tbl"><table><tr><th>Method</th><th>What it does</th><th>My run (first 2,048 / rest)</th></tr>
+<tr><td>RoPE unchanged</td><td>nothing</td><td>16.6 / 716.6</td></tr>
+<tr><td>Position Interpolation (Meta, 2023)</td><td>divide every position by 4: all pairs slowed equally</td><td>101.5 / 113.4</td></tr>
+<tr><td>Dynamic NTK</td><td>raise the base for the current length: slow pairs slowed a lot, fast ones barely</td><td>25.0 / 37.5</td></tr>
+<tr><td>YaRN (2023)</td><td>leave fast pairs alone, squeeze only slow ones, blend between</td><td>17.7 / 20.9</td></tr></table></div>
+<div class="box warn">All my runs use <b>no extra training</b>. Position Interpolation is meant to be followed by fine-tuning: with under 1,000 steps the paper took LLaMA from 2,048 to 32,768 tokens. Without it, squeezing also blurs the fast pairs, so even the short part gets worse (101.5).</div>
+<p>Bigger bases became the norm: Code Llama raised its base from 10,000 to 1,000,000 while training on longer code; Llama 3 uses 500,000 and reached a 128K-token context in its final training stage; the Qwen I tested uses 1,000,000.</p>
+
+<h2 id="what-s-next-and-the-recap">13. What's next, and the recap</h2>
+<h3>Images: M-RoPE (Qwen2-VL)</h3>
+<p>An image is a grid, not a line. Qwen2-VL splits the rotary pairs into 3 groups that turn with <b>time</b>, <b>height</b> and <b>width</b>. For text, all 3 get the same number, which makes it ordinary RoPE. Image patches share one time number and get height and width from their place in the grid; the next text continues after the largest number used. Position numbers following the paper's rule:</p>
+<div class="tbl"><table><tr><th>token</th><th>time</th><th>height</th><th>width</th></tr><tr><td>Describe</td><td>0</td><td>0</td><td>0</td></tr><tr><td>this</td><td>1</td><td>1</td><td>1</td></tr><tr><td>image patch r1c1</td><td>2</td><td>2</td><td>2</td></tr><tr><td>image patch r1c2</td><td>2</td><td>2</td><td>3</td></tr><tr><td>image patch r1c3</td><td>2</td><td>2</td><td>4</td></tr><tr><td>image patch r2c1</td><td>2</td><td>3</td><td>2</td></tr><tr><td>image patch r2c2</td><td>2</td><td>3</td><td>3</td></tr><tr><td>image patch r2c3</td><td>2</td><td>3</td><td>4</td></tr><tr><td>:</td><td>5</td><td>5</td><td>5</td></tr><tr><td>a</td><td>6</td><td>6</td><td>6</td></tr></table></div>
+<h3>Some layers with no position at all: Llama 4</h3>
+<p>Meta's Llama 4 uses "interleaved attention layers without positional embeddings", with RoPE in most layers, and calls it iRoPE, aimed at very long context.</p>
+<h3>Recap</h3>
+<ol>
+<li>Attention scores tokens with dot products; dot products can't see order.</li>
+<li>Adding positions (sine waves, learned tables) works, but mixes address into meaning and is absolute.</li>
+<li>Relative biases (Shaw, T5, ALiBi) add an extra term to the scores.</li>
+<li>RoPE rotates the query and key by their positions. Lengths don't change, so the score sees only the angle, and the angle sees only the gap.</li>
+<li>Many speeds let it separate neighbours and count far.</li>
+<li>Its weak spot is length beyond training (slow pairs), but because positions are angles, they can be stretched (PI, NTK, YaRN, bigger bases).</li>
+</ol>
+
+<h2 id="sources">Sources</h2><ul class="sources"><li>Vaswani et al. 2017</li><li>Shaw et al. 2018</li><li>Raffel et al. 2019 (T5)</li><li>Ke et al. 2020 (via RoFormer)</li><li>Su et al. 2021 (RoFormer)</li><li>Press et al. 2021 (ALiBi)</li><li>Haviv et al. 2022</li><li>Chowdhery et al. 2022 (PaLM)</li><li>Black et al. 2022 (GPT-NeoX-20B)</li><li>BigScience 2022 (BLOOM)</li><li>Touvron et al. 2023 (LLaMA)</li><li>Chen et al. 2023 (Position Interpolation)</li><li>Rozière et al. 2023 (Code Llama)</li><li>Peng et al. 2023 (YaRN)</li><li>Llama Team 2024 (Llama 3)</li><li>Wang et al. 2024 (Qwen2-VL)</li><li>Barbero et al. 2024</li><li>Meta 2025 (Llama 4 blog)</li><li>Zhu et al. 2023 (PoSE)</li><li>Ruoss et al. 2023 (Randomized Positional Encodings)</li><li>Ostmeier et al. 2024 (LieRE)</li><li>Liu et al. 2025 (Rethinking RoPE). Model runs: Qwen2.5-0.5B, GPT-2 small, SmolLM-135M, fp32 on CPU</li></ul>
+<div class="endcard"><h3>Watch the full video</h3><p>22 minutes, 13 chapters, no maths assumed: the same story as this article, animated.</p>
+<div class="actions"><a class="btn ytbtn" data-watch="rope-long" target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.6 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg>Watch on YouTube</a>
+<a class="btn" data-channel target="_blank" rel="noopener">Subscribe</a>
+<a class="btn" href="https://www.linkedin.com/in/rohit-kumar-singh-621818a9/" target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><path d="M20.4 20.5h-3.6v-5.6c0-1.3 0-3-1.8-3s-2.1 1.4-2.1 2.9v5.7H9.3V9h3.4v1.6h.1c.5-.9 1.6-1.8 3.4-1.8 3.6 0 4.3 2.4 4.3 5.5v6.2zM5.3 7.4a2.1 2.1 0 1 1 0-4.1 2.1 2.1 0 0 1 0 4.1zM7.1 20.5H3.5V9h3.6v11.5zM22.2 0H1.8C.8 0 0 .8 0 1.7v20.6c0 .9.8 1.7 1.8 1.7h20.4c1 0 1.8-.8 1.8-1.7V1.7C24 .8 23.2 0 22.2 0z"/></svg>Follow on LinkedIn</a></div></div>
+<a class="next" href="../sliding-window-attention/"><span>Next explainer</span><b>Sliding window attention →</b></a>
+</article>
+</div>
+<script>
+var q=[0.17955447733402252,-10.879302024841309],k=[8.627439498901367,-1.2665178775787354],th=0.07498942093324558;
+var cv=document.getElementById("cv"),c=cv.getContext("2d");
+function ar(a,len,col){var x=210+Math.cos(a)*len,y=210-Math.sin(a)*len;c.strokeStyle=col;c.lineWidth=7;c.lineCap="round";c.beginPath();c.moveTo(210,210);c.lineTo(x,y);c.stroke();c.fillStyle=col;c.beginPath();c.arc(x,y,9,0,7);c.fill();}
+function draw(){var m=+document.getElementById("m").value,n=+document.getElementById("n").value;
+document.getElementById("ml").textContent="sat (query) at position "+m;document.getElementById("nl").textContent="cat (key) at position "+n;
+c.clearRect(0,0,420,420);c.strokeStyle="#333";c.lineWidth=2;c.beginPath();c.arc(210,210,190,0,7);c.stroke();
+var aq=Math.atan2(q[1],q[0])+m*th,ak=Math.atan2(k[1],k[0])+n*th;ar(aq,170,"#ff6a2b");ar(ak,140,"#35d6c0");
+var d=Math.abs(Math.atan2(Math.sin(aq-ak),Math.cos(aq-ak))*180/Math.PI);
+document.getElementById("out").textContent="gap "+(m-n)+" · angle between "+d.toFixed(1)+"°";}
+document.getElementById("m").oninput=draw;document.getElementById("n").oninput=draw;draw();
+</script>
+<footer class="site"><div class="in"><span>© 2026 Rohit Kumar Singh</span>
+<span><a href="https://www.linkedin.com/in/rohit-kumar-singh-621818a9/" target="_blank" rel="noopener">LinkedIn</a> · <a href="https://github.com/gotherohit/AIML" target="_blank" rel="noopener">GitHub</a> · <a href="mailto:rohitkrsingh2000@gmail.com">Email</a></span></div></footer>
+<script src="../../assets/site.js"></script>
+</body></html>
