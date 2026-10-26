@@ -169,3 +169,7 @@ footer.site .in{max-width:var(--wrap);margin:auto;padding:28px 22px;display:flex
 .next span{display:block;font:600 12px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
 .next b{font-size:19px}
 .card .meta span+span:before{content:"·";margin-right:10px;color:var(--line2)}
+.yt.pending{background:radial-gradient(120% 90% at 80% 10%,color-mix(in srgb,var(--accent,#7c9dff) 30%,transparent),transparent 60%),repeating-linear-gradient(90deg,rgba(255,255,255,.035) 0 1px,transparent 1px 32px),repeating-linear-gradient(0deg,rgba(255,255,255,.035) 0 1px,transparent 1px 32px),#0f1014}
+.yt.pending .soon{background:linear-gradient(180deg,rgba(0,0,0,0) 30%,rgba(0,0,0,.6))}
+.yt.pending .soon .label{color:var(--accent,#7c9dff);opacity:1}
+footer.site .ai-note{flex-basis:100%;margin:4px 0 0;font-size:13px;line-height:1.55;color:var(--dim)}

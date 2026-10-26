@@ -1,0 +1,745 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>How a tokenizer works, from first principles</title>
+<meta name="description" content="Why GPT-4o turns hello, Hello and HELLO into different numbers: bytes, UTF-8, step 0, byte pair encoding trained on real text, encoding and decoding, and a complete tokenizer you can run.">
+<link rel="canonical" href="https://gotherohit.github.io/AIML/explainers/tokenizer/">
+<meta property="og:type" content="article"><meta property="og:title" content="How a tokenizer works, from first principles">
+<meta property="og:description" content="Why GPT-4o turns hello, Hello and HELLO into different numbers: bytes, UTF-8, step 0, byte pair encoding trained on real text, encoding and decoding, and a complete tokenizer you can run."><meta property="og:url" content="https://gotherohit.github.io/AIML/explainers/tokenizer/">
+<meta property="og:image" content="https://gotherohit.github.io/AIML/images/covers/tokenizer.jpg"><meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x2='1' y2='1'%3E%3Cstop stop-color='%2335d6c0'/%3E%3Cstop offset='1' stop-color='%23ff6a2b'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../assets/site.css"><style>:root{--accent:#b18cff;--accent2:#4fd39a}.prose h4{font-size:17.5px;margin:28px 0 6px;color:var(--fg)}.prose .part{margin:84px 0 0;padding:22px 0 0;border-top:2px solid var(--accent)}.prose .part .pt{font:700 13px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}.prose .part p{margin:6px 0 0;color:var(--fg2)}.prose .part + h2{border-top:0;margin-top:22px;padding-top:0}.prose .note{color:var(--dim);font-size:15px}.prose .big{font-size:22px}.prose .row{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0;align-items:flex-start}.prose .chip{display:inline-flex;flex-direction:column;align-items:center;background:#1b1d24;border:1px solid var(--line2);border-radius:6px;padding:3px 7px;min-width:26px;font:14px var(--mono);line-height:1.35}.prose .chip i{font-style:normal;white-space:pre}.prose .chip b{font-size:11px;color:var(--dim);font-weight:600}.prose .chip.hot{border-color:#ff7a62}.prose .chip.hot b{color:#ff7a62}.prose .chip.new{border-color:#4fd39a;box-shadow:0 0 0 1px #4fd39a}.prose .chip.new b{color:#4fd39a}.prose .word{display:inline-flex;gap:2px;margin-right:8px}.prose .word .chip{padding:3px 4px;min-width:20px}.prose .sp{color:#ff7a62;font-weight:700}.prose .pair{font-family:var(--mono);background:#1b1d24;padding:0 4px;border-radius:4px}.prose .pairrow{display:inline-flex;gap:5px;align-items:center;white-space:nowrap}.prose .pairrow code{white-space:pre}.prose .step,.prose .path{border-left:3px solid var(--line2);padding-left:12px;margin:12px 0}.prose code.wrap{white-space:normal}.prose p code,.prose li code{overflow-wrap:anywhere}.prose .box.disclosure{border-left-color:var(--accent);font-size:15.5px;color:var(--fg2)}.prose .code{position:relative}.prose .code pre{max-height:560px}.prose .copy{position:absolute;top:8px;right:8px;font:600 12.5px var(--sans);padding:5px 12px;border-radius:8px;border:1px solid var(--line2);background:#1b1d24;color:var(--fg);cursor:pointer}.prose .chart{width:100%;max-width:520px;display:block;margin:10px 0}.prose .chart .bar{fill:var(--accent)}.prose .chart .lab,.prose .chart .val{fill:var(--fg);font:11px var(--mono)}.prose .chart .ax{fill:var(--dim);font:11px var(--mono)}.prose .chart .grid{stroke:var(--line);stroke-width:1}.prose .chart .ln{fill:none;stroke:var(--accent);stroke-width:2}.prose .chart .dot{fill:var(--accent);stroke:var(--bg);stroke-width:2}.prose .chart .ref{stroke:#ff7a62;stroke-width:1.5;stroke-dasharray:5 4}.prose .chart .reflab{fill:#ff7a62;font:11px var(--mono)}.prose .bits{border-collapse:collapse;width:auto}.prose .bits th,.prose .bits td{border:1px solid var(--line);padding:4px 8px;text-align:center;font:13.5px var(--mono)}.prose .bits td.on{background:var(--accent);color:#14101c}.prose .bits td.off{color:var(--dim)}.prose .bits td.lb{background:#e08a1e;color:#140c02}.prose .pour{border-collapse:collapse;width:auto;font:15px var(--mono)}.prose .pour th{color:var(--dim);background:none;padding:4px 10px 4px 0}.prose .pour td{padding:4px 3px;text-align:center;border:0}.prose .pour td.lb{color:#f0a040;font-weight:700}.prose .pour td.num{color:var(--accent);font-weight:700}.prose .pour td.res{font-weight:700;border-top:1px solid var(--line2)}.prose dt{font-weight:700;margin-top:12px}.prose dd{margin:2px 0 0;color:var(--fg2)}</style>
+</head><body>
+<header class="topbar"><div class="in">
+<a class="brand" href="../../"><span class="mark">RK</span>Rohit Kumar Singh</a>
+<nav><a class="txt" href="../../#explainers">Explainers</a><a class="txt" href="../../#projects">Projects</a><a class="txt" href="../../#about">About</a>
+<a class="icon" data-channel target="_blank" rel="noopener" aria-label="YouTube"><svg viewBox="0 0 24 24"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.6 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg></a>
+<a class="icon" href="https://www.linkedin.com/in/rohit-kumar-singh-621818a9/" target="_blank" rel="noopener" aria-label="LinkedIn"><svg viewBox="0 0 24 24"><path d="M20.4 20.5h-3.6v-5.6c0-1.3 0-3-1.8-3s-2.1 1.4-2.1 2.9v5.7H9.3V9h3.4v1.6h.1c.5-.9 1.6-1.8 3.4-1.8 3.6 0 4.3 2.4 4.3 5.5v6.2zM5.3 7.4a2.1 2.1 0 1 1 0-4.1 2.1 2.1 0 0 1 0 4.1zM7.1 20.5H3.5V9h3.6v11.5zM22.2 0H1.8C.8 0 0 .8 0 1.7v20.6c0 .9.8 1.7 1.8 1.7h20.4c1 0 1.8-.8 1.8-1.7V1.7C24 .8 23.2 0 22.2 0z"/></svg></a>
+<a class="icon" href="https://github.com/gotherohit/AIML" target="_blank" rel="noopener" aria-label="GitHub"><svg viewBox="0 0 24 24"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.3-3.1-.2-.4-.6-1.6 0-3.2 0 0 1-.3 3.4 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.2.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.5.4.9 1.1.9 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"/></svg></a></nav>
+</div></header>
+<div class="article-head">
+<div class="crumbs"><a href="../../#explainers">Explainers</a> /</div>
+<h1>How a tokenizer works, from first principles</h1>
+<p class="dek">A language model never sees letters, only token numbers. This is how that list of tokens is learned, why hello and Hello end up as different numbers, and how to build a working tokenizer yourself, with every number measured on real tokenizers.</p>
+<div class="tags" style="margin-bottom:16px"><span class="tag">Tokenizers</span><span class="tag">BPE</span><span class="tag">UTF-8</span><span class="tag">Code included</span></div>
+<div class="byline"><span>By <b>Rohit Kumar Singh</b></span><span>October 2026</span><span>51 min read</span></div>
+</div>
+<div class="videos two">
+<div class="yt" data-video="tokenizer-long" data-soon data-label="Full video" data-title="How a tokenizer works, from first principles"></div>
+<div class="yt vertical" data-video="tokenizer-short" data-soon data-label="Short" data-title="Why GPT-4o sees hello as 5 different words"></div>
+</div>
+<div class="layout">
+<details class="toc"><summary>Contents</summary><ol><li><a href="#the-surprise">The surprise</a></li><li><a href="#computers-already-store-text-as-numbers">Computers already store text as numbers</a></li><li><a href="#how-utf-8-turns-a-number-into-bytes-and-back">How UTF-8 turns a number into bytes (and back)</a></li><li><a href="#what-a-language-model-needs-from-us">What a language model needs from us</a></li><li><a href="#three-ways-to-cut-text">Three ways to cut text</a></li><li><a href="#what-does-training-a-tokenizer-mean">What does &quot;training a tokenizer&quot; mean?</a></li><li><a href="#step-0-in-detail-chopping-text-into-chunks-befor">Step 0 in detail: chopping text into chunks before training</a></li><li><a href="#step-1-start-from-the-256-bytes">Step 1: start from the 256 bytes</a></li><li><a href="#steps-2-and-3-count-glue-repeat">Steps 2 and 3: count, glue, repeat</a></li><li><a href="#why-the-hello-forms-got-different-pieces">Why the hello forms got different pieces</a></li><li><a href="#encoding-turning-your-text-into-ids">Encoding: turning your text into IDs</a></li><li><a href="#decoding-turning-ids-back-into-text">Decoding: turning IDs back into text</a></li><li><a href="#special-tokens">Special tokens</a></li><li><a href="#from-an-id-to-a-meaning">From an ID to a meaning</a></li><li><a href="#how-big-should-the-list-be">How big should the list be?</a></li><li><a href="#numbers">Numbers</a></li><li><a href="#other-languages">Other languages</a></li><li><a href="#glitch-tokens">Glitch tokens</a></li><li><a href="#other-recipes">Other recipes</a></li><li><a href="#cost-and-context-limits">Cost and context limits</a></li><li><a href="#the-complete-code">The complete code</a></li><li><a href="#python-you-need-for-this-code">Python you need for this code</a></li><li><a href="#step-0-and-the-two-helpers">Step 0 and the two helpers</a></li><li><a href="#the-tokenizer-and-how-it-trains">The Tokenizer and how it trains</a></li><li><a href="#encoding-decoding-saving">Encoding, decoding, saving</a></li><li><a href="#run-it-test-it-change-it">Run it, test it, change it</a></li><li><a href="#glossary">Glossary</a></li></ol></details>
+<article class="prose">
+<div class="box disclosure"><b>How this article was made</b>The code on this page was written with the help of an AI assistant, and the explanations grew out of an in-depth conversation with AI, used to work through the topic step by step. Every number comes from code that was actually run, and the claims are checked against the original papers listed under Sources.</div>
+
+<div class="part"><div class="pt">Part 1. The problem</div><p>What a model can read, and why text has to be cut up at all.</p></div>
+<h2 id="the-surprise">1. The surprise</h2>
+<p>Type the same greeting five ways. GPT-4o does not receive letters. It receives these numbers:</p><div class="tbl"><table class=t><tr><th>You type</th><th>GPT-4o receives</th></tr><tr><td><code>hello</code></td><td><span class='chip hot'><i>hello</i><b>24,912</b></span></td></tr><tr><td><code><span class=sp>·</span>hello</code></td><td><span class='chip hot'><i><span class=sp>·</span>hello</i><b>40,617</b></span></td></tr><tr><td><code>Hello</code></td><td><span class='chip hot'><i>Hello</i><b>13,225</b></span></td></tr><tr><td><code><span class=sp>·</span>Hello</code></td><td><span class='chip hot'><i><span class=sp>·</span>Hello</i><b>32,949</b></span></td></tr><tr><td><code>HELLO</code></td><td><span class='chip hot'><i>HEL</i><b>111,642</b></span><span class='chip hot'><i>LO</i><b>2,699</b></span></td></tr></table></div>
+<p>Five spellings, five unrelated numbers, and <code>HELLO</code> is not even one piece. Every model does this, each with its own numbers:</p><div class="tbl"><table class=t><tr><th>Text</th><th>Gemma 3</th><th>Qwen2.5</th><th>Llama 3.2</th></tr><tr><td><code>hello</code></td><td><span class=mono>23,391</span></td><td><span class=mono>14,990</span></td><td><span class=mono>15,339</span></td></tr><tr><td><code><span class=sp>·</span>hello</code></td><td><span class=mono>29,104</span></td><td><span class=mono>23,811</span></td><td><span class=mono>24,748</span></td></tr><tr><td><code>Hello</code></td><td><span class=mono>9,259</span></td><td><span class=mono>9,707</span></td><td><span class=mono>9,906</span></td></tr><tr><td><code><span class=sp>·</span>Hello</code></td><td><span class=mono>26,352</span></td><td><span class=mono>21,927</span></td><td><span class=mono>22,691</span></td></tr><tr><td><code>HELLO</code></td><td><span class=mono>174,886</span></td><td><span class=mono>50,712 + 1,593</span></td><td><span class=mono>51,812 + 1,623</span></td></tr></table></div>
+<p class=note>GPT-4o's tokenizer is called o200k_base. OpenAI's own library (tiktoken) lists it for GPT-4o, GPT-4.1, GPT-5, o1, o3 and o4-mini. This article says "GPT-4o" rather than "ChatGPT" because the tokenizer of the newest ChatGPT model is not published.</p>
+<div class="box key">The model never sees the letters. It sees a list of numbers, one per <b>token</b>. The program that cuts text into tokens and gives each one its number is the <b>tokenizer</b>. The rest of this page is about how that program is made and why it gives these results.</div>
+<h2 id="computers-already-store-text-as-numbers">2. Computers already store text as numbers</h2>
+<p>Start at the very bottom. A computer only stores numbers. For text there is a world-wide agreement called <b>Unicode</b>: every character in every language has a fixed number (its <i>code point</i>), written like U+0068 for "h".</p>
+<p>To save it in a file, each code point is written as <b>1 to 4 bytes</b> using a scheme called <b>UTF-8</b>. A byte is a small number from 0 to 255 (8 bits: 2<sup>8</sup> = 256 possible values).</p><div class="tbl"><table class=t><tr><th>Char</th><th>What</th><th>Code point</th><th>UTF-8 bytes</th><th>Bytes</th></tr><tr><td><span class=big>h</span></td><td>letter h</td><td>U+0068</td><td><span class=mono>104</span></td><td>1</td></tr><tr><td><span class=big>H</span></td><td>capital H</td><td>U+0048</td><td><span class=mono>72</span></td><td>1</td></tr><tr><td>(space)</td><td>space</td><td>U+0020</td><td><span class=mono>32</span></td><td>1</td></tr><tr><td><span class=big>é</span></td><td>e with accent</td><td>U+00E9</td><td><span class=mono>195 169</span></td><td>2</td></tr><tr><td><span class=big>₹</span></td><td>rupee sign</td><td>U+20B9</td><td><span class=mono>226 130 185</span></td><td>3</td></tr><tr><td><span class=big>中</span></td><td>Chinese character</td><td>U+4E2D</td><td><span class=mono>228 184 173</span></td><td>3</td></tr><tr><td><span class=big>🙂</span></td><td>emoji</td><td>U+1F642</td><td><span class=mono>240 159 153 130</span></td><td>4</td></tr><tr><td><span class=big>🤦‍♂️</span></td><td>emoji made of 4 parts</td><td>4 code points</td><td><span class=mono>240 159 164 166 226 128 141 226 153 130 239 184 143</span></td><td>13</td></tr></table></div>
+<p>So "hello" on disk is the five bytes <span class=mono>104 101 108 108 111</span>. Plain English letters are 1 byte each; accented letters, the rupee sign, Chinese and emoji take more. The face-palm emoji is really 4 characters joined together (face palm + an invisible "joiner" + male sign + a style marker), 13 bytes in total.</p>
+<div class="box key">Important for later: <b>any text at all</b> can be written with only 256 different byte values. That is why modern tokenizers start from bytes.</div>
+<h2 id="how-utf-8-turns-a-number-into-bytes-and-back">2b. How UTF-8 turns a number into bytes (and back)</h2>
+<p>How does a code point like "U+20B9" relate to the bytes in a file? Short answer: <b>only bytes are stored</b>. "U+20B9" is never written in the file; it is just how people write the character's number. UTF-8 is the rule that turns that number into bytes, and back.</p>
+
+<h4>1. What "U+" and hexadecimal mean</h4>
+<p>Normal counting is <b>base 10</b>: digits 0–9, and each position is worth 10× the one to its right (1, 10, 100…). So 104 = 1×100 + 0×10 + 4×1.</p>
+<p><b>Hexadecimal is base 16</b>: it needs 16 digits, so after 9 it uses letters:</p><div class="tbl"><table class=t><tr><th>Hex digit</th><th>Value</th></tr><tr><td>0–9</td><td>0–9</td></tr><tr><td>A</td><td>10</td></tr><tr><td>B</td><td>11</td></tr><tr><td>C</td><td>12</td></tr><tr><td>D</td><td>13</td></tr><tr><td>E</td><td>14</td></tr><tr><td>F</td><td>15</td></tr></table></div>
+<p>Each position is worth 16× the one to its right: 1, 16, 256, 4,096…</p>
+<p><b>The letter h</b> is number 104. 104 = 6 sixteens + 8 ones, so in hex it is <b>68</b>. Unicode pads it to 4 digits and puts "U+" in front: <b>U+0068</b>. "U+" only means "this is a Unicode number, written in hex".</p>
+<p><b>The rupee sign ₹</b> is U+20B9. Reading it back:</p>
+<div class="tbl"><table class=t><tr><th>Hex digit</th><td>2</td><td>0</td><td>B</td><td>9</td></tr><tr><th>Worth</th><td>2 × 4,096 = 8,192</td><td>0 × 256 = 0</td><td>B × 16 = 176</td><td>9 × 1 = 9</td></tr></table></div>
+<p>Total: <b>8,377</b>. U+20B9 and 8,377 are the <b>same number</b> written two ways. People like hex because each hex digit is exactly 4 switches (bits), which makes the next part tidy.</p>
+
+<h4>2. A byte is 8 on/off switches</h4>
+<p>Each switch has a fixed worth: 128, 64, 32, 16, 8, 4, 2, 1. The byte's value is the sum of the switches that are on (1). All on is the biggest: 255.</p><div class="tbl"><table class=bits><tr><th>worth</th><th>128</th><th>64</th><th>32</th><th>16</th><th>8</th><th>4</th><th>2</th><th>1</th></tr><tr><th>104</th><td class='off'>0</td><td class='on'>1</td><td class='on'>1</td><td class='off'>0</td><td class='on'>1</td><td class='off'>0</td><td class='off'>0</td><td class='off'>0</td></tr></table></div><p class=note>104 = 64 + 32 + 8</p><div class="tbl"><table class=bits><tr><th>worth</th><th>128</th><th>64</th><th>32</th><th>16</th><th>8</th><th>4</th><th>2</th><th>1</th></tr><tr><th>226</th><td class='on'>1</td><td class='on'>1</td><td class='on'>1</td><td class='off'>0</td><td class='off'>0</td><td class='off'>0</td><td class='on'>1</td><td class='off'>0</td></tr></table></div><p class=note>226 = 128 + 64 + 32 + 2</p>
+
+<h4>3. The first switches of each byte are a label</h4>
+<p>UTF-8 uses the first few switches of every byte as a <b>label</b>. The rule: <b>count the 1s before the first 0</b>. That is how many bytes the character has. A byte starting with <code>10</code> is a continuation byte.</p><div class="tbl"><table class=t><tr><th>Byte starts with</th><th>Values</th><th>Meaning</th></tr><tr><td><code>0</code>…</td><td>0–127</td><td>a whole character by itself</td></tr><tr><td><code>110</code>…</td><td>192–223</td><td>start of a 2-byte character</td></tr><tr><td><code>1110</code>…</td><td>224–239</td><td>start of a 3-byte character</td></tr><tr><td><code>11110</code>…</td><td>240–247</td><td>start of a 4-byte character</td></tr><tr><td><code>10</code>…</td><td>128–191</td><td>continuation of the character before it</td></tr></table></div>
+<p>The value ranges are not extra rules; they come straight from the labels. Every byte that starts with <code>1110</code> lies between <code>11100000</code> = 224 and <code>11101111</code> = 239. </p><p class=note>Strictly, 192, 193 and 245–247 never appear in valid UTF-8: they would only encode numbers that fit in fewer bytes, or numbers past Unicode's last character (U+10FFFF). The label idea is what matters.</p><p>Some real bytes and what their label says:</p><div class="tbl"><table class=t><tr><th>Byte</th><th>Switches</th><th>Label</th><th>Means</th></tr><tr><td>104</td><td><code>01101000</code></td><td><code>0</code></td><td>a whole character by itself</td></tr><tr><td>226</td><td><code>11100010</code></td><td><code>1110</code></td><td>start of a 3-byte character</td></tr><tr><td>130</td><td><code>10000010</code></td><td><code>10</code></td><td>continuation of the character before it</td></tr><tr><td>185</td><td><code>10111001</code></td><td><code>10</code></td><td>continuation of the character before it</td></tr><tr><td>168</td><td><code>10101000</code></td><td><code>10</code></td><td>continuation of the character before it</td></tr><tr><td>240</td><td><code>11110000</code></td><td><code>11110</code></td><td>start of a 4-byte character</td></tr></table></div>
+<p><b>226</b> = <code>1110 0010</code>: three 1s then a 0, so "a 3-byte character starts here: me plus the next 2". <b>104</b> starts with 0: it is "h" on its own. <b>168</b> = <code>1010 1000</code> starts with <code>10</code>: it can only continue a character, never start one. Python agrees; decoding byte 168 by itself gives the error <code class=wrap>&#x27;utf-8&#x27; codec can&#x27;t decode byte 0xa8 in position 0: invalid start byte</code>.</p>
+
+<h4>4. The template: pour the number into the free switches</h4>
+<p>After the label, the remaining switches of each byte are <b>empty slots</b>, and the character's number is poured into them, in order.</p>
+<p>₹ is 8,377. In switches that is 16 bits: <code>0010000010111001</code>. A 3-byte character has exactly 16 free slots: <code>1110____</code> (4) + <code>10______</code> (6) + <code>10______</code> (6). Pour the bits in, 4 then 6 then 6 (orange = label, blue = the number):</p><div class="tbl"><table class=pour><tr><th>Number's bits</th><td></td><td class=num>0010</td><td></td><td></td><td class=num>000010</td><td></td><td></td><td class=num>111001</td></tr><tr><th>Byte</th><td class=lb>1110</td><td class=num>0010</td><td>|</td><td class=lb>10</td><td class=num>000010</td><td>|</td><td class=lb>10</td><td class=num>111001</td></tr><tr><th>Value</th><td colspan=2 class=res>226</td><td></td><td colspan=2 class=res>130</td><td></td><td colspan=2 class=res>185</td></tr></table></div>
+<p>So ₹ is stored as the three bytes <b>226 130 185</b>, and nothing else.</p>
+<p class=note>Why 3 bytes and not 2? A 2-byte character has only 5 + 6 = 11 free slots, enough for numbers up to 2,047. ₹ (8,377) needs more, so it takes the 3-byte form (16 slots, up to 65,535). Most emoji are bigger still and take 4 bytes.</p>
+
+<h4>5. Reading it back</h4>
+<ol><li>The program reads <b>226</b>. Label <code>1110</code>: this character is 3 bytes.</li>
+<li>It checks the next two bytes (130, 185) start with <code>10</code>. They do, so they belong to this character.</li>
+<li>It removes the labels and glues the leftover switches: <code>0010</code> + <code>000010</code> + <code>111001</code> = 8,377.</li>
+<li>It looks up 8,377 in the Unicode table: ₹.</li></ol>
+<div class="box key">Picture a train. The first carriage carries a sign: "this train has 3 carriages" (label 1110). Every other carriage carries a sign: "I belong to the train in front" (label 10). The passengers in the free seats are the pieces of the number.</div>
+
+<h4>6. The bytes do not say which rule to use</h4>
+<p>A file does not carry a label saying "I am UTF-8"; the program has to be told or assume it. Read the same three bytes 226 130 185 with the old Windows-1252 rule (one byte = one character) and you get <b>â‚¹</b>: byte 226 becomes â, 130 becomes ‚ (a low quote mark), 185 becomes ¹. That is the garbled text you sometimes see on websites.</p>
+
+<div class="box key">Why this matters for tokenizers: byte-level BPE works on these stored bytes, not on characters. A token can hold the first carriage without the ones behind it. That is why some tokens are <b>half a character</b> (the emoji pieces in section 11) and only make sense once joined with the next tokens.</div>
+<h2 id="what-a-language-model-needs-from-us">3. What a language model needs from us</h2>
+<p>A language model does one job again and again: look at the pieces so far and give a score to <b>every possible next piece</b>, then pick one. That one fact forces two things:</p>
+<ol><li><b>A fixed, finite list of pieces.</b> The model's last step produces one score per entry of the list, so the list has to be decided before the model is built. This list is the <b>vocabulary</b>.</li>
+<li><b>Each piece has a position number in that list (its ID).</b> Inside the model, ID <i>k</i> picks row <i>k</i> of a big table of learned numbers (the <b>embedding table</b>). That row is what the model actually works with.</li></ol>
+<p>Real example, the small open model SmolLM-135M: its list has <b>49,152</b> entries and each row has <b>576</b> numbers, so the table holds 28,311,552 numbers. That is <b>21%</b> of the whole model (134,515,008 numbers). In this model the same table is used both to read the input and to score the next piece (config: tie_word_embeddings = True).</p>
+<div class="box key">So the tokenizer must turn <i>any</i> text into IDs from a fixed list, and turn IDs back into the exact same text. Everything that follows is about how to choose that list.</div>
+<h2 id="three-ways-to-cut-text">4. Three ways to cut text</h2>
+<p>There are three obvious choices for "a piece" (the first comes in two versions). I measured them all on the same 5,166,860 bytes of new children's stories (text the tokenizer never saw):</p><div class="tbl"><table class=t><tr><th>Cut into</th><th>Pieces needed</th><th>Size of the list</th></tr><tr><td>one piece per character</td><td>5,164,777</td><td>every possible character (150,000+)</td></tr><tr><td>one piece per byte</td><td>5,166,860</td><td>256</td></tr><tr><td>whole words (letters only)</td><td>1,036,957</td><td>11,336+, never complete</td></tr><tr><td>our subword tokenizer (8,000 merges)</td><td>1,270,131</td><td>8,256</td></tr><tr><td>GPT-4o's tokenizer</td><td>1,233,789</td><td>200,019</td></tr></table></div>
+<p class=note>"Pieces needed" = how many IDs the model would receive for this text. "Size of the list" = how many different entries the list must contain.</p>
+<h4>Option A1: one piece per character</h4>
+<p>Each character (h, e, ₹, “, 🙂...) is one piece, so the text needs <b>5,164,777 pieces</b>, one per character. The problem is the list: it must have an entry for <b>every character that could ever appear</b>. This one text uses only 79 different characters, but Unicode has well over 150,000, and any character missing from the list could not be written at all.</p>
+<h4>Option A2: one piece per byte</h4>
+<p>Here a piece is <b>one byte</b>, not one character. Every character is first written as its 1 to 4 bytes (section 2), and <b>each byte becomes its own piece</b>. So the pieces needed = the number of bytes in the text, <b>5,166,860</b>, slightly more than the 5,164,777 characters, because 1,042 characters in this text take more than 1 byte. The most common one is the curly quote “, which is the 3 bytes 226 128 156 and so becomes <b>3 pieces</b>:</p><div class=row><span class='chip '><i>226</i></span><span class='chip '><i>128</i></span><span class='chip '><i>156</i></span></div>
+<p>Plain letters like h are 1 byte, so they are still 1 piece each.</p>
+<p>The gain: the list needs only <b>256</b> entries. That 256 is <b>not a number of characters</b>; it is the number of different values one byte can hold (8 switches = 2×2×2×2×2×2×2×2 = 256). Every character in every language is written with these same 256 values (several of them in a row for bigger characters), so a list of 256 can write any text and nothing is ever missing.</p>
+<p>The cost: the text gets long, one ID per byte. The model has to work through 5,166,860 steps instead of about 1,233,789 with GPT-4o's tokenizer, and spends effort on spelling instead of meaning. The GPT-2 paper notes that byte-level models "are not competitive with word-level" ones on large datasets.</p>
+<h4>Option B: whole words</h4>
+<p>Short sequences, but the list never ends. I built a word list from the 22,161,827 characters of training stories: <b>11,336 different words</b> (2,740 of them seen only once). Then I checked new text against it:</p><div class="tbl"><table class=t><tr><th>New text</th><th>Words</th><th>Not in the word list</th></tr><tr><td>new children's stories</td><td>1,036,957</td><td>1,496 (0.14%)</td></tr><tr><td>the BPE research paper</td><td>6,986</td><td>3,024 (43%)</td></tr></table></div>
+<p>In new stories from the same kind of text only 0.14% of words are missing, and they are mostly names (Rina, Inky, Aaron, Boxy, Jan). But in the BPE paper's own text, <b>43% of the words are missing</b>: "translation", "vocabulary", "subword", "segmentation". A word-level model simply cannot write a word that is not on its list. Real tokenizers would also need separate entries for every "dog", "dogs", "Dog", typo and name.</p>
+<h4>Option C: pieces of words (subwords)</h4>
+<p>The middle road: frequent words become one piece, rare words are spelled from smaller pieces, and in the worst case single bytes, so <b>nothing is ever missing</b>. Our own small tokenizer from Part 2 cuts those "missing" words like this:</p><div class=row><code style='min-width:120px'>Sennrich</code><span class=word><span class='chip '><i><span class=sp>·</span>S</i></span><span class='chip '><i>en</i></span><span class='chip '><i>n</i></span><span class='chip '><i>ri</i></span><span class='chip '><i>ch</i></span></span></div><div class=row><code style='min-width:120px'>translation</code><span class=word><span class='chip '><i><span class=sp>·</span>tr</i></span><span class='chip '><i>ans</i></span><span class='chip '><i>l</i></span><span class='chip '><i>ation</i></span></span></div><div class=row><code style='min-width:120px'>subword</code><span class=word><span class='chip '><i><span class=sp>·</span>sub</i></span><span class='chip '><i>w</i></span><span class='chip '><i>ord</i></span></span></div><div class=row><code style='min-width:120px'>Edinburgh</code><span class=word><span class='chip '><i><span class=sp>·</span>Ed</i></span><span class='chip '><i>in</i></span><span class='chip '><i>b</i></span><span class='chip '><i>ur</i></span><span class='chip '><i>g</i></span><span class='chip '><i>h</i></span></span></div><div class=row><code style='min-width:120px'>hyperparameter</code><span class=word><span class='chip '><i><span class=sp>·</span>h</i></span><span class='chip '><i>y</i></span><span class='chip '><i>p</i></span><span class='chip '><i>er</i></span><span class='chip '><i>par</i></span><span class='chip '><i>am</i></span><span class='chip '><i>eter</i></span></span></div>
+<div class="box key">Tokenizers used by today's models (GPT, Llama, Qwen, Gemma) all use option C, built with a recipe called <b>Byte Pair Encoding (BPE)</b>. The Hugging Face files of Qwen2.5, Llama 3.2 and Gemma 3 all say model type: BPE.</div>
+<div class="part"><div class="pt">Part 2. Training a tokenizer</div><p>Where the list comes from.</p></div>
+<h2 id="what-does-training-a-tokenizer-mean">5. What does &quot;training a tokenizer&quot; mean?</h2>
+<p>Short answer: <b>it is not like training an LLM.</b> The word "training" only means the list is <i>learned from example text</i> instead of being written by hand. There is no neural network, no GPU and no guessing. It is counting.</p><div class="tbl"><table class=t><tr><th></th><th>Training a tokenizer (BPE)</th><th>Training an LLM</th></tr><tr><td>What is learned</td><td>A list of glue rules ("merge h and e"), in order</td><td>Millions to billions of numbers inside a neural network</td></tr><tr><td>How</td><td>Count which two pieces sit next to each other most often. Glue that pair. Repeat.</td><td>Predict the next token, measure the error, nudge every number a tiny bit (gradient descent). Repeat.</td></tr><tr><td>Is there a neural network?</td><td>No</td><td>Yes, that is the thing being trained</td></tr><tr><td>Randomness</td><td>None. Same text and settings give the same list every time. (I trained ours twice with two different programs: identical, verified.)</td><td>Yes: random starting numbers, random order of data</td></tr><tr><td>Cost of our demo</td><td>8,000 merges on 22,161,827 characters: about 192 seconds on a laptop CPU, no GPU</td><td>Needs GPUs. This is the expensive part of building a model</td></tr><tr><td>What comes out</td><td>A text file of merge rules plus the list of pieces. Ours: 8,000 lines, 235 KB</td><td>A file of weights (SmolLM-135M: 134,515,008 numbers)</td></tr><tr><td>When</td><td>First, once</td><td>After, on text that has already been turned into IDs by the finished tokenizer</td></tr></table></div>
+<h4>The three things a person chooses before training</h4>
+<ol><li><b>The example text.</b> A big sample of the kind of text the model will see later. (Ours: 22,161,827 characters of TinyStories, a public set of simple children's stories.) If the sample has little code, or little of some language, those get few list entries and are cut into many small pieces later.</li>
+<li><b>The step-0 rule</b>: how text is chopped into word-sized chunks before counting (section 6).</li>
+<li><b>How many merges</b>, which sets the final list size. The BPE paper calls this "the only hyperparameter of the algorithm". GPT-2 used exactly <b>50,000</b> merges: 256 bytes + 50,000 merges + 1 special marker = 50,257 entries.</li></ol>
+<h4>What the result looks like</h4>
+<p>The first rules our training wrote, in the order they were learned. Each row is one rule:</p><div class="tbl"><table class=t><tr><th>Merge #</th><th>Glued</th><th>New piece</th><th>Its ID</th><th>Times seen side by side</th></tr><tr><td>1</td><td><span class=pairrow><code><span class=sp>·</span></code>+<code>t</code></span></td><td><code><span class=sp>·</span>t</code></td><td>256</td><td>641,902</td></tr><tr><td>2</td><td><span class=pairrow><code>h</code>+<code>e</code></span></td><td><code>he</code></td><td>257</td><td>639,606</td></tr><tr><td>3</td><td><span class=pairrow><code><span class=sp>·</span></code>+<code>a</code></span></td><td><code><span class=sp>·</span>a</code></td><td>258</td><td>479,229</td></tr><tr><td>4</td><td><span class=pairrow><code><span class=sp>·</span></code>+<code>s</code></span></td><td><code><span class=sp>·</span>s</code></td><td>259</td><td>327,136</td></tr><tr><td>5</td><td><span class=pairrow><code><span class=sp>·</span></code>+<code>w</code></span></td><td><code><span class=sp>·</span>w</code></td><td>260</td><td>319,705</td></tr><tr><td>6</td><td><span class=pairrow><code><span class=sp>·</span>t</code>+<code>he</code></span></td><td><code><span class=sp>·</span>the</code></td><td>261</td><td>292,733</td></tr><tr><td>7</td><td><span class=pairrow><code>n</code>+<code>d</code></span></td><td><code>nd</code></td><td>262</td><td>291,700</td></tr><tr><td>8</td><td><span class=pairrow><code>e</code>+<code>d</code></span></td><td><code>ed</code></td><td>263</td><td>251,311</td></tr><tr><td>9</td><td><span class=pairrow><code><span class=sp>·</span></code>+<code>b</code></span></td><td><code><span class=sp>·</span>b</code></td><td>264</td><td>223,850</td></tr><tr><td>10</td><td><span class=pairrow><code><span class=sp>·</span>t</code>+<code>o</code></span></td><td><code><span class=sp>·</span>to</code></td><td>265</td><td>211,359</td></tr><tr><td>11</td><td><span class=pairrow><code><span class=sp>·</span>a</code>+<code>nd</code></span></td><td><code><span class=sp>·</span>and</code></td><td>266</td><td>196,057</td></tr><tr><td>12</td><td><span class=pairrow><code><span class=sp>·</span></code>+<code>h</code></span></td><td><code><span class=sp>·</span>h</code></td><td>267</td><td>180,175</td></tr></table></div>
+<ul><li><b>Merge #</b>: the order the rule was learned in (1st, 2nd, 3rd…).</li>
+<li><b>Glued</b> and <b>New piece</b>: which two pieces were joined, and the piece that came out.</li>
+<li><b>Its ID</b>: the new piece's token number. It starts at <b>256</b>, not 1, because IDs 0 to 255 are already taken by the 256 single bytes (section 7). So merge 1 gets ID 256, merge 2 gets 257, and so on: ID = 255 + merge number.</li>
+<li><b>Times seen side by side</b>: how often that pair sat next to each other in the training text at that moment. This is <b>a count, not a token number</b>: "·" + "t" (the start of "the", "to", "then"...) appeared 641,902 times, more than any other pair, so it won round 1. Each later round picks the most common pair that is still left, so the counts keep falling.</li></ul>
+<p class=note>In the file itself each rule is one line of text, for example: <code class=wrap>1	&#x27; &#x27;	&#x27;t&#x27;	&#x27; t&#x27;	641902</code></p>
+<h4>Why the tokenizer is then frozen forever</h4>
+<p>The model's row number <i>k</i> is learned for whatever piece has ID <i>k</i>. If you changed the list after training the model, every row would suddenly belong to a different piece and the model would read nonsense. So a model and its tokenizer are a fixed pair. The glitch-token paper (Land &amp; Bartolo 2024) is about what goes wrong because the two are made separately: "the disconnect between tokenizer creation and model training".</p>
+<div class="box key">Order of events: <b>1.</b> collect text &rarr; <b>2.</b> train the tokenizer (counting, minutes to hours) &rarr; <b>3.</b> freeze it &rarr; <b>4.</b> turn all training text into IDs &rarr; <b>5.</b> train the LLM on those IDs (the expensive part).</div>
+<h2 id="step-0-in-detail-chopping-text-into-chunks-befor">6. Step 0 in detail: chopping text into chunks before training</h2>
+<p>Before any counting, the text is cut into word-sized <b>chunks</b> by a fixed, hand-written rule. Merges are only ever counted <b>inside</b> a chunk, never across two chunks. Apart from the special tokens (section 12), this rule is the only part of a tokenizer that a person writes by hand; everything else is learned.</p>
+<h4>6a. Why bother? Experiment</h4>
+<p>To see what step 0 does, I trained <b>three small test tokenizers of my own</b>, not real GPT-2. To keep it quick each one learned only <b>500 merges</b> from the same 300,000 characters. (The real GPT-2 tokenizer has 50,000 merges; a small test is enough to show the effect.) The <b>only</b> difference between the three is the step-0 rule: none at all, splitting at spaces only, or <b>GPT-2's chopping rule</b>, the pattern GPT-2 uses before merging. Then I used each one on 100,000 characters of new text:</p><div class="tbl"><table class=t><tr><th>Step 0 rule (test tokenizer, 500 merges)</th><th>Pieces glued across words</th><th>Letters glued to punctuation</th><th>Tokens for new text</th></tr><tr><td>none (whole line is one chunk)</td><td>247</td><td>18</td><td>33,893</td></tr><tr><td>split at spaces only</td><td>0</td><td>37</td><td>34,665</td></tr><tr><td>GPT-2's chopping rule</td><td>0</td><td>2</td><td>35,364</td></tr></table></div>
+<p class=note>"Glued across words" = a learned piece that contains a space in the middle, or ends in a letter followed by a space. "Letters glued to punctuation" = a piece mixing letters with punctuation, like <code>day.</code></p>
+<p>Examples of pieces learned with <b>no step 0</b>: <code>Once<span class=sp>·</span>upon<span class=sp>·</span>a<span class=sp>·</span>time,<span class=sp>·</span>there<span class=sp>·</span>was<span class=sp>·</span>a<span class=sp>·</span></code> <code>Once<span class=sp>·</span>upon<span class=sp>·</span>a<span class=sp>·</span>time,<span class=sp>·</span></code> <code>One<span class=sp>·</span>day,<span class=sp>·</span>a<span class=sp>·</span></code> <code>.<span class=sp>·</span>One<span class=sp>·</span>day,<span class=sp>·</span></code> <code>One<span class=sp>·</span>day,<span class=sp>·</span></code> <code>said,<span class=sp>·</span>&quot;</code> <code><span class=sp>·</span>and<span class=sp>·</span></code> <code>the<span class=sp>·</span></code></p>
+<p>Examples with <b>spaces only</b>: <code>Lily.</code> <code>day,</code> <code>day.</code> <code>friends.</code> <code>fun.</code> <code>happy.</code> <code>ily.</code> <code>ing.</code></p>
+<p>Without step 0 the list fills with pieces that are really bits of phrases (one entry for "<code>Once<span class=sp>·</span>upon<span class=sp>·</span>a<span class=sp>·</span>time,<span class=sp>·</span>there<span class=sp>·</span>was<span class=sp>·</span>a<span class=sp>·</span></code>"). With spaces only, words come in many copies glued to punctuation. The GPT-2 paper describes exactly this: BPE "including many versions of common words like dog since they occur in many variations such as dog. dog! dog?", which wastes list entries. With GPT-2's chopping rule, the test tokenizer's 500 entries go to cleaner, reusable pieces instead.</p>
+<p class=note>Notice the raw token count on new text is not the point here: the no-step-0 version can even use fewer tokens on stories, because it memorises common phrases of this one kind of text. The cost: a list full of entries that only make sense for this one kind of text, and pieces that do not line up with words.</p>
+<h4>6b. The second reason: speed</h4>
+<p>Training happens in two stages:</p>
+<ol><li><b>Once, at the start:</b> one pass over the whole text. Cut it into chunks (step 0) and count how often each different chunk appears. The result is a <b>dictionary</b> of chunk &rarr; count. Our 5,411,109 chunks become only <b>13,119 different ones</b>, because the same words repeat. The most common: <code>.</code> 421,616 times, <code>,</code> 235,432 times, <code><span class=sp>·</span>the</code> 211,031 times, <code><span class=sp>·</span>and</code> 196,057 times.</li>
+<li><b>Every merge round after that</b> (8,000 rounds for our tokenizer) works only on the dictionary. To count pairs, it looks at each of the 13,119 entries once and adds its pairs <i>count</i> times. To glue the winning pair, it again only changes the 13,119 entries.</li></ol>
+<p><b>Why this saves time.</b> Take one chunk, <code>·the</code>, which appears 211,031 times. In every round the program must count the pairs inside it (<code>·t</code>+<code>he</code> and so on).</p>
+<ul><li><b>Without the dictionary</b> it would read <code>·the</code> 211,031 separate times and add 1 each time.</li>
+<li><b>With the dictionary</b> it reads <code>·the</code> <b>once</b> and adds 211,031 in one go. Same answer, one look instead of 211,031.</li></ul>
+<p>The same happens for every chunk, in every round. Over the whole text, the first round reads:</p><div class="tbl"><table class=t><tr><th></th><th>Without the dictionary</th><th>With the dictionary</th></tr><tr><td>What is read</td><td>every copy of every chunk</td><td>each different chunk once</td></tr><tr><td>Chunks</td><td>5,411,109</td><td>13,119</td></tr><tr><td>Bytes</td><td>22,171,041</td><td>90,884</td></tr><tr><td>Work</td><td>1&times;</td><td>about 244&times; less</td></tr></table></div>
+<p>And this repeats in all 8,000 rounds, which is why the dictionary matters so much.</p>
+<p>The BPE paper does exactly this: "the algorithm can thus be run on the dictionary extracted from a text, with each word being weighted by its frequency". It only works <i>because</i> of step 0: merges never cross chunks, so two copies of the same chunk always change in exactly the same way, and one entry with a count can stand for all of them.</p>
+<h4>6c. The GPT-2 rule, piece by piece</h4>
+<p>The rule is a pattern (a regular expression) that tries these alternatives from left to right:</p><div class="tbl"><table class=t><tr><th>Part of the pattern</th><th>Means</th><th>Example</th></tr><tr><td><code>'s 't 're 've 'm 'll 'd</code></td><td>English endings after an apostrophe become their own chunk</td><td>I'm &rarr; I | 'm</td></tr><tr><td><code>␣?letters</code></td><td>an optional single space, then a run of letters</td><td>·Ben, ·dog</td></tr><tr><td><code>␣?digits</code></td><td>an optional space, then a run of digits</td><td>·1234567</td></tr><tr><td><code>␣?other</code></td><td>an optional space, then a run of anything that is not a letter, digit or space (punctuation, symbols)</td><td>!, ., (, )</td></tr><tr><td><code>spaces</code></td><td>runs of spaces/new lines, but the last space is left to join the next word</td><td>↵··· then ·print</td></tr></table></div>
+<p>Sample sentence: <code class=wrap>Hello! I&#x27;m Ben. My dog&#x27;s name is SolidGoldMagikarp, he&#x27;s 1234567 days old.↵    print(x)</code></p><p>GPT-2's step 0 gives these chunks:</p><div class=row><span class='chip '><i>Hello</i></span><span class='chip '><i>!</i></span><span class='chip '><i><span class=sp>·</span>I</i></span><span class='chip '><i>&#x27;m</i></span><span class='chip '><i><span class=sp>·</span>Ben</i></span><span class='chip '><i>.</i></span><span class='chip '><i><span class=sp>·</span>My</i></span><span class='chip '><i><span class=sp>·</span>dog</i></span><span class='chip '><i>&#x27;s</i></span><span class='chip '><i><span class=sp>·</span>name</i></span><span class='chip '><i><span class=sp>·</span>is</i></span><span class='chip '><i><span class=sp>·</span>SolidGoldMagikarp</i></span><span class='chip '><i>,</i></span><span class='chip '><i><span class=sp>·</span>he</i></span><span class='chip '><i>&#x27;s</i></span><span class='chip '><i><span class=sp>·</span>1234567</i></span><span class='chip '><i><span class=sp>·</span>days</i></span><span class='chip '><i><span class=sp>·</span>old</i></span><span class='chip '><i>.</i></span><span class='chip '><i><span class=sp>↵</span><span class=sp>·</span><span class=sp>·</span><span class=sp>·</span></i></span><span class='chip '><i><span class=sp>·</span>print</i></span><span class='chip '><i>(</i></span><span class='chip '><i>x</i></span><span class='chip '><i>)</i></span></div>
+<h4>6d. Why is the space glued to the <i>front</i> of the word?</h4>
+<p>In normal text almost every word comes right after a space. Keeping that space with the word means "·the" is one very common chunk, and the space itself costs nothing extra. It also marks "a new word starts here", so the model can tell <code>·hello</code> (a word on its own) from <code>hello</code> at the start of a message or glued to something. GPT-2's paper says allowing spaces into word chunks "significantly improves the compression efficiency". The price: <b>the same word gets two entries</b>, with and without the space. That is exactly the hello puzzle from section 1.</p>
+<h4>6e. Every company writes its own step 0</h4>
+<p>Same sentence, step 0 of GPT-4 (cl100k_base):</p><div class=row><span class='chip '><i>Hello</i></span><span class='chip '><i>!</i></span><span class='chip '><i><span class=sp>·</span>I</i></span><span class='chip '><i>&#x27;m</i></span><span class='chip '><i><span class=sp>·</span>Ben</i></span><span class='chip '><i>.</i></span><span class='chip '><i><span class=sp>·</span>My</i></span><span class='chip '><i><span class=sp>·</span>dog</i></span><span class='chip '><i>&#x27;s</i></span><span class='chip '><i><span class=sp>·</span>name</i></span><span class='chip '><i><span class=sp>·</span>is</i></span><span class='chip '><i><span class=sp>·</span>SolidGoldMagikarp</i></span><span class='chip '><i>,</i></span><span class='chip '><i><span class=sp>·</span>he</i></span><span class='chip '><i>&#x27;s</i></span><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>123</i></span><span class='chip '><i>456</i></span><span class='chip '><i>7</i></span><span class='chip '><i><span class=sp>·</span>days</i></span><span class='chip '><i><span class=sp>·</span>old</i></span><span class='chip '><i>.<span class=sp>↵</span></i></span><span class='chip '><i><span class=sp>·</span><span class=sp>·</span><span class=sp>·</span></i></span><span class='chip '><i><span class=sp>·</span>print</i></span><span class='chip '><i>(x</i></span><span class='chip '><i>)</i></span></div><p>and of GPT-4o (o200k_base):</p><div class=row><span class='chip '><i>Hello</i></span><span class='chip '><i>!</i></span><span class='chip '><i><span class=sp>·</span>I&#x27;m</i></span><span class='chip '><i><span class=sp>·</span>Ben</i></span><span class='chip '><i>.</i></span><span class='chip '><i><span class=sp>·</span>My</i></span><span class='chip '><i><span class=sp>·</span>dog&#x27;s</i></span><span class='chip '><i><span class=sp>·</span>name</i></span><span class='chip '><i><span class=sp>·</span>is</i></span><span class='chip '><i><span class=sp>·</span>Solid</i></span><span class='chip '><i>Gold</i></span><span class='chip '><i>Magikarp</i></span><span class='chip '><i>,</i></span><span class='chip '><i><span class=sp>·</span>he&#x27;s</i></span><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>123</i></span><span class='chip '><i>456</i></span><span class='chip '><i>7</i></span><span class='chip '><i><span class=sp>·</span>days</i></span><span class='chip '><i><span class=sp>·</span>old</i></span><span class='chip '><i>.<span class=sp>↵</span></i></span><span class='chip '><i><span class=sp>·</span><span class=sp>·</span><span class=sp>·</span></i></span><span class='chip '><i><span class=sp>·</span>print</i></span><span class='chip '><i>(x</i></span><span class='chip '><i>)</i></span></div>
+<ul><li>GPT-4 and GPT-4o cut numbers into runs of <b>at most 3 digits</b>: 1234567 &rarr; 123 | 456 | 7. GPT-2 did not, so its number pieces were arbitrary.</li>
+<li>GPT-4o keeps <code>I'm</code> and <code>dog's</code> as one chunk, and splits words at capital letters: SolidGoldMagikarp &rarr; Solid | Gold | Magikarp, before any merge happens.</li>
+<li>Line breaks and indentation get their own rules (useful for code).</li></ul>
+<h4>6f. The other style: SentencePiece and "▁"</h4>
+<p>Google's SentencePiece toolkit works differently: its paper describes replacing every space with a visible marker "▁" (U+2581) and treating the text as one stream, so the space marker is simply part of the pieces. Gemma's list uses this marker: <code>▁hello</code>. In the Hugging Face files of GPT-style tokenizers (Qwen, Llama) you will see "Ġhello": Ġ is only how those files print a space byte. Same idea, different printing.</p>
+<div class="box key">Step 0 decides <i>where pieces are allowed to form</i>. BPE then decides <i>which</i> pieces form, purely by counting.</div>
+<h2 id="step-1-start-from-the-256-bytes">7. Step 1: start from the 256 bytes</h2>
+<p>The starting list is the 256 possible byte values. Every chunk is written as its bytes: <code>·hello</code> = 32 104 101 108 108 111.</p>
+<p>Why bytes and not "all characters"? The GPT-2 paper: covering all of Unicode as single symbols would need "a base vocabulary of over 130,000 before any multi-symbol tokens are added", while "a byte-level version of BPE only requires a base vocabulary of size 256". And because every possible text is bytes, <b>no input can ever be impossible to write</b>.</p>
+
+<h4>What happens to a character that is 3 bytes?</h4>
+<p>BPE never sees characters, only byte numbers. So at the start, a 3-byte character is simply <b>3 separate pieces</b>. Take the curly quote “, which is the bytes 226 128 156:</p><div class=row><span class=word><span class='chip '><i>226</i></span></span><span class=word><span class='chip '><i>128</i></span></span><span class=word><span class='chip '><i>156</i></span></span></div>
+<p>From then on it is the same counting as for letters. Whether those 3 bytes ever become one piece depends only on how often they appear. In our real training on TinyStories:</p><div class="tbl"><table class=t><tr><th>Merge #</th><th>Glued</th><th>Gives</th><th>Times seen</th></tr><tr><td>437</td><td><span class=pairrow><code>226</code>+<code>128</code></span></td><td><b>half a character</b></td><td>4,601</td></tr><tr><td>844</td><td><span class=pairrow><code>226 128</code>+<code>157</code></span></td><td><code>”</code></td><td>1,642</td></tr><tr><td>849</td><td><span class=pairrow><code>226 128</code>+<code>156</code></span></td><td><code>“</code></td><td>1,630</td></tr><tr><td>942</td><td><span class=pairrow><code>32</code>+<code>226 128 156</code></span></td><td><code><span class=sp>·</span>“</code></td><td>1,394</td></tr><tr><td>1,053</td><td><span class=pairrow><code>226 128</code>+<code>153</code></span></td><td><code>’</code></td><td>1,183</td></tr><tr><td>1,529</td><td><span class=pairrow><code>46</code>+<code>226 128 157</code></span></td><td><code>.”</code></td><td>590</td></tr></table></div>
+<p>Look at merge 437: the pair 226 + 128 is glued into a piece that is <b>only 2 of the 3 bytes</b>, half a character that cannot be shown on its own. That happens because the open quote “, the close quote ” and the apostrophe ’ all <b>begin with the same two bytes</b> 226 128, so that pair was seen 4,601 times, more than any of the quotes alone. Later merges finish the job: 226 128 + 157 gives ” at merge 844, + 156 gives “ at merge 849, + 153 gives ’ at merge 1053. Training then even glues a space onto the finished open quote (merge 942) and a full stop onto the close quote (merge 1529), exactly like letters.</p>
+<p>So yes: <b>a token can hold 2 bytes out of a 3-byte character</b>. After training there are two outcomes:</p>
+<ul><li><b>Common characters end up whole</b>, often glued to their neighbours. Our tokenizer turns <code>·“Hello</code> into these two pieces (space + open quote, then Hello):<div class=row><span class=word><span class='chip '><i>32</i></span><span class='chip '><i>226</i></span><span class='chip '><i>128</i></span><span class='chip '><i>156</i></span></span><span class=word><span class='chip '><i>72</i></span><span class='chip '><i>101</i></span><span class='chip '><i>108</i></span><span class='chip '><i>108</i></span><span class='chip '><i>111</i></span></span></div></li>
+<li><b>Rare characters stay in pieces.</b> ₹ never appears in the children's stories, so no merge ever touched its bytes and it stays as 3 single-byte pieces: <div class=row><span class=word><span class='chip '><i>226</i></span></span><span class=word><span class='chip '><i>130</i></span></span><span class=word><span class='chip '><i>185</i></span></span></div></li></ul>
+<p>Real tokenizers show both cases:</p><div class="tbl"><table class=t><tr><th>Char</th><th>GPT-2 pieces</th><th>GPT-4o pieces</th></tr><tr><td><span class=big>₹</span></td><td><div class=row><span class=word><span class='chip '><i>226</i></span></span><span class=word><span class='chip '><i>130</i></span></span><span class=word><span class='chip '><i>185</i></span></span></div></td><td><div class=row><span class=word><span class='chip '><i>226</i></span><span class='chip '><i>130</i></span><span class='chip '><i>185</i></span></span></div></td></tr><tr><td><span class=big>“</span></td><td><div class=row><span class=word><span class='chip '><i>226</i></span><span class='chip '><i>128</i></span></span><span class=word><span class='chip '><i>156</i></span></span></div></td><td><div class=row><span class=word><span class='chip '><i>226</i></span><span class='chip '><i>128</i></span><span class='chip '><i>156</i></span></span></div></td></tr><tr><td><span class=big>中</span></td><td><div class=row><span class=word><span class='chip '><i>228</i></span><span class='chip '><i>184</i></span><span class='chip '><i>173</i></span></span></div></td><td><div class=row><span class=word><span class='chip '><i>228</i></span><span class='chip '><i>184</i></span><span class='chip '><i>173</i></span></span></div></td></tr></table></div>
+<p>GPT-2 splits “ into a half-character piece [226 128] plus the last byte [156]. GPT-4o, trained on far more text, learned all three as whole characters.</p>
+<div class="box key">Why it still works: decoding joins <b>all</b> the bytes first and only then reads them as UTF-8 (section 2b). The labels inside the bytes (1110, 10, 10) put the character back together, no matter how the tokenizer cut it. The only catch is showing text while it is being generated: a half-character piece cannot be printed until the rest of its bytes arrive.</div>
+<h4>Gemma's different design: characters first, bytes only as a backup ("byte fallback")</h4>
+<p>GPT-style tokenizers (GPT-2, GPT-4o, Llama, Qwen) always start from bytes: every text is bytes, and pieces are built by gluing bytes. Gemma's tokenizer was built the SentencePiece way, which starts from <b>characters</b> instead. (The Gemma 3 technical report: "a SentencePiece tokenizer with split digits, preserved whitespace, and byte-level encodings"; "the resulting vocabulary has 262k entries".) Its list of 262,144 entries contains <b>19,227 single characters</b> as building blocks (letters of many scripts, ₹, 中, many emoji), and the merges glue characters into longer pieces. So a common character is one piece from the very start:</p><div class="tbl"><table class=t><tr><th>Character</th><th>Its bytes</th><th>Gemma 3 piece</th></tr><tr><td><span class=big>h</span></td><td>104</td><td><div class=row><span class='chip '><i>h</i><b>236,754</b></span></div></td></tr><tr><td><span class=big>₹</span></td><td>226 130 185</td><td><div class=row><span class='chip '><i>₹</i><b>239,519</b></span></div></td></tr><tr><td><span class=big>中</span></td><td>228 184 173</td><td><div class=row><span class='chip '><i>中</i><b>237,103</b></span></div></td></tr><tr><td><span class=big>🙂</span></td><td>240 159 153 130</td><td><div class=row><span class='chip '><i>🙂</i><b>240,731</b></span></div></td></tr></table></div>
+<p>But what about a character that is <b>not</b> on the list? Two real examples: the Egyptian hieroglyph 𓀀 (U+13000) and the rare Cyrillic letter ꙮ (U+A66E). With characters as the only building blocks, there would be no way to write them.</p>
+<p>That is what <b>byte fallback</b> is for. Gemma's list also contains <b>256 special byte tokens</b>, written <code>&lt;0x00&gt;</code> to <code>&lt;0xFF&gt;</code> (IDs 238 to 493): one for each possible byte value, in hexadecimal (section 2b). When a character is not on the list, the tokenizer <b>falls back</b> to writing its UTF-8 bytes with these tokens:</p><div class="tbl"><table class=t><tr><th>Character</th><th>Its bytes</th><th>Gemma 3 pieces (byte fallback)</th></tr><tr><td><span class=big>𓀀</span></td><td>240 147 128 128</td><td><div class=row><span class='chip '><i>&lt;0xF0&gt;</i><b>478</b></span><span class='chip '><i>&lt;0x93&gt;</i><b>385</b></span><span class='chip '><i>&lt;0x80&gt;</i><b>366</b></span><span class='chip '><i>&lt;0x80&gt;</i><b>366</b></span></div></td></tr><tr><td><span class=big>ꙮ</span></td><td>234 153 174</td><td><div class=row><span class='chip '><i>&lt;0xEA&gt;</i><b>472</b></span><span class='chip '><i>&lt;0x99&gt;</i><b>391</b></span><span class='chip '><i>&lt;0xAE&gt;</i><b>412</b></span></div></td></tr></table></div>
+<p>𓀀 is the 4 bytes 240 147 128 128, so it becomes the 4 byte tokens above. When decoding, Gemma's decoder has a "ByteFallback" step that turns those tokens back into bytes and reads them as UTF-8, so the character comes back exactly.</p>
+<h4>What if byte fallback were switched off?</h4>
+<p>I loaded the same tokenizer file twice, once as it is (byte_fallback: true) and once with it switched off, and encoded <code>hi 𓀀 ꙮ</code>:</p><div class="tbl"><table class=t><tr><th>Byte fallback</th><th>Pieces</th><th>Decoded back</th></tr><tr><td>on (as shipped)</td><td><div class=row><span class='chip '><i>hi</i><b>2,202</b></span><span class='chip '><i>▁</i><b>236,743</b></span><span class='chip '><i>&lt;0xF0&gt;</i><b>478</b></span><span class='chip '><i>&lt;0x93&gt;</i><b>385</b></span><span class='chip '><i>&lt;0x80&gt;</i><b>366</b></span><span class='chip '><i>&lt;0x80&gt;</i><b>366</b></span><span class='chip '><i>▁</i><b>236,743</b></span><span class='chip '><i>&lt;0xEA&gt;</i><b>472</b></span><span class='chip '><i>&lt;0x99&gt;</i><b>391</b></span><span class='chip '><i>&lt;0xAE&gt;</i><b>412</b></span></div></td><td><code>hi 𓀀 ꙮ</code></td></tr><tr><td>off</td><td><div class=row><span class='chip '><i>hi</i><b>2,202</b></span><span class='chip '><i>▁</i><b>236,743</b></span><span class='chip '><i>&lt;unk&gt;</i><b>3</b></span><span class='chip '><i>▁</i><b>236,743</b></span><span class='chip '><i>&lt;unk&gt;</i><b>3</b></span></div></td><td><code>hi<span class=sp>·</span><span class=sp>·</span></code></td></tr></table></div>
+<p>With it off, each unknown character becomes <code>&lt;unk&gt;</code>, a single "unknown" token, and the character is <b>gone for good</b>: decoding gives back <code>hi<span class=sp>·</span><span class=sp>·</span></code>, with nothing where 𓀀 and ꙮ were. Byte fallback makes sure that never happens.</p>
+<h4>Bytes first vs characters first</h4><div class="tbl"><table class=t><tr><th></th><th>GPT-2, GPT-4o, Llama, Qwen</th><th>Gemma</th></tr><tr><td>Building blocks</td><td>the 256 bytes</td><td>characters (19,227 of them)</td></tr><tr><td>A common character like ₹</td><td>glued from its bytes by merges (if common enough)</td><td>one character piece from the start</td></tr><tr><td>A character not on the list</td><td>its single bytes (always possible)</td><td>byte fallback tokens &lt;0x..&gt;</td></tr><tr><td>Can a piece be half a character?</td><td>yes</td><td>only in byte fallback</td></tr></table></div>
+<p>For these two rare characters both designs end up in the same place: GPT-4o also writes 𓀀 as 4 single bytes and ꙮ as 3. The difference is everything else. In GPT-style tokenizers bytes are the base of every text, so a learned piece can even be half a character (the 226 128 piece above). In Gemma, pieces are built from whole characters, and bytes only appear for characters the list does not have.</p>
+<h2 id="steps-2-and-3-count-glue-repeat">8. Steps 2 and 3: count, glue, repeat</h2>
+<h4>Why is it called "Byte Pair Encoding"?</h4>
+<p>The name is older than AI. BPE started in <b>1994 as a way to compress files</b> (Philip Gage, "A New Algorithm for Data Compression", C Users Journal). The BPE paper describes the original as "a simple data compression technique that iteratively replaces the most frequent pair of bytes in a sequence with a single, unused byte". So the name says exactly what it did: look at <b>pairs of bytes</b> side by side, and <b>re-encode</b> the file by replacing the most common pair with one new byte, making it shorter.</p>
+<p>Example: a file whose bytes are <code>ABCABCABD</code> (9 bytes). Each step replaces the most common pair with a byte the file never uses:</p><div class="tbl"><table class=t><tr><th>Step</th><th>Most common pair</th><th>Seen</th><th>Replace with</th><th>Bytes after</th></tr><tr><td>1</td><td><code>AB</code></td><td>3 times</td><td><code>Z</code></td><td><span class=pairrow><code>ZCZCZD</code>(6)</span></td></tr><tr><td>2</td><td><code>ZC</code></td><td>2 times</td><td><code>Y</code></td><td><span class=pairrow><code>YYZD</code>(4)</span></td></tr></table></div>
+<p>9 bytes became 4, plus a small table (Z = AB, Y = ZC) to unpack it: replace in reverse order (Y becomes ZC &rarr; Z becomes AB) and you get back exactly <code>ABCABCABD</code>.</p>
+<p>In 2016 Sennrich and colleagues borrowed the same loop for language: glue the most frequent pair of <i>characters</i> to build a list of word pieces. The name stayed even though they worked on characters; the GPT-2 paper remarks that "despite its name, reference BPE implementations often operate on Unicode code points and not byte sequences". GPT-2 went back to real bytes, which is the version on this page.</p>
+<p>One difference: Gage could only use byte values the file did not already contain, and there are only 256. A tokenizer has no such limit: each merge simply gets the next new ID (256, 257, 258…), so the list can grow to 50,000 or 200,000 entries.</p>
+<h4>The training loop</h4>
+<p>The whole training loop:</p>
+<ol><li>Look inside every chunk and count every pair of neighbouring pieces (each chunk counts as many times as it appears in the text).</li>
+<li>Take the pair with the highest count. Give the glued pair a new ID (the next free number) and add it to the list. Write down the rule.</li>
+<li>Everywhere that pair appears, replace it with the new piece.</li>
+<li>Go back to 1. Stop when the list reaches the chosen size.</li></ol>
+<p>Each round adds <b>exactly one</b> entry. Pieces can grow by gluing two already-glued pieces (" t" + "he" &rarr; " the"). Ties are broken by a fixed rule so the result is repeatable.</p>
+<h4>A tiny example, every step shown</h4><p class=mono>Text: <b>the cat sat on the mat the cat ran</b></p><p>After step 0 the chunks are: <code>the</code>, <code><span class=sp>·</span>cat</code> ×2, <code><span class=sp>·</span>sat</code>, <code><span class=sp>·</span>on</code>, <code><span class=sp>·</span>the</code> ×2, <code><span class=sp>·</span>mat</code>, <code><span class=sp>·</span>ran</code>. Note <code>·the</code> appears twice, <code>·cat</code> twice; the very first <code>the</code> has no space because nothing comes before it.</p><p>Round 1, the counting. Every neighbouring pair inside every chunk, counted:</p><div class="tbl"><table class=t><tr><th>Pair</th><th>Count</th></tr><tr><td><code>a</code> + <code>t</code></td><td>4</td></tr><tr><td><code>t</code> + <code>h</code></td><td>3</td></tr><tr><td><code>h</code> + <code>e</code></td><td>3</td></tr><tr><td><code><span class=sp>·</span></code> + <code>c</code></td><td>2</td></tr><tr><td><code>c</code> + <code>a</code></td><td>2</td></tr><tr><td><code><span class=sp>·</span></code> + <code>t</code></td><td>2</td></tr></table></div><p class=note>(Only the top 6 of 15 different pairs shown.) The winner is glued; then the counting starts again from scratch.</p><div class=step><h4>Start: every character is its own piece</h4><div class=row><span class=word><span class='chip '><i>t</i></span><span class='chip '><i>h</i></span><span class='chip '><i>e</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>c</i></span><span class='chip '><i>a</i></span><span class='chip '><i>t</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>s</i></span><span class='chip '><i>a</i></span><span class='chip '><i>t</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>o</i></span><span class='chip '><i>n</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>t</i></span><span class='chip '><i>h</i></span><span class='chip '><i>e</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>m</i></span><span class='chip '><i>a</i></span><span class='chip '><i>t</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>r</i></span><span class='chip '><i>a</i></span><span class='chip '><i>n</i></span></span></div></div><div class=step><h4>Merge 1: <span class=pair>a</span> + <span class=pair>t</span> &rarr; <span class=pair>at</span> <small>(side by side 4 times)</small></h4><div class=row><span class=word><span class='chip '><i>t</i></span><span class='chip '><i>h</i></span><span class='chip '><i>e</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>c</i></span><span class='chip new'><i>at</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>s</i></span><span class='chip new'><i>at</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>o</i></span><span class='chip '><i>n</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>t</i></span><span class='chip '><i>h</i></span><span class='chip '><i>e</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>m</i></span><span class='chip new'><i>at</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>r</i></span><span class='chip '><i>a</i></span><span class='chip '><i>n</i></span></span></div></div><div class=step><h4>Merge 2: <span class=pair>t</span> + <span class=pair>h</span> &rarr; <span class=pair>th</span> <small>(side by side 3 times)</small></h4><div class=row><span class=word><span class='chip new'><i>th</i></span><span class='chip '><i>e</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>c</i></span><span class='chip '><i>at</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>s</i></span><span class='chip '><i>at</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>o</i></span><span class='chip '><i>n</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip new'><i>th</i></span><span class='chip '><i>e</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>m</i></span><span class='chip '><i>at</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>r</i></span><span class='chip '><i>a</i></span><span class='chip '><i>n</i></span></span></div></div><div class=step><h4>Merge 3: <span class=pair>th</span> + <span class=pair>e</span> &rarr; <span class=pair>the</span> <small>(side by side 3 times)</small></h4><div class=row><span class=word><span class='chip new'><i>the</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>c</i></span><span class='chip '><i>at</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>s</i></span><span class='chip '><i>at</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>o</i></span><span class='chip '><i>n</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip new'><i>the</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>m</i></span><span class='chip '><i>at</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>r</i></span><span class='chip '><i>a</i></span><span class='chip '><i>n</i></span></span></div></div><div class=step><h4>Merge 4: <span class=pair><span class=sp>·</span></span> + <span class=pair>c</span> &rarr; <span class=pair><span class=sp>·</span>c</span> <small>(side by side 2 times)</small></h4><div class=row><span class=word><span class='chip '><i>the</i></span></span><span class=word><span class='chip new'><i><span class=sp>·</span>c</i></span><span class='chip '><i>at</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>s</i></span><span class='chip '><i>at</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>o</i></span><span class='chip '><i>n</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>the</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>m</i></span><span class='chip '><i>at</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>r</i></span><span class='chip '><i>a</i></span><span class='chip '><i>n</i></span></span></div></div><div class=step><h4>Merge 5: <span class=pair><span class=sp>·</span>c</span> + <span class=pair>at</span> &rarr; <span class=pair><span class=sp>·</span>cat</span> <small>(side by side 2 times)</small></h4><div class=row><span class=word><span class='chip '><i>the</i></span></span><span class=word><span class='chip new'><i><span class=sp>·</span>cat</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>s</i></span><span class='chip '><i>at</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>o</i></span><span class='chip '><i>n</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>the</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>m</i></span><span class='chip '><i>at</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>r</i></span><span class='chip '><i>a</i></span><span class='chip '><i>n</i></span></span></div></div><div class=step><h4>Merge 6: <span class=pair><span class=sp>·</span></span> + <span class=pair>the</span> &rarr; <span class=pair><span class=sp>·</span>the</span> <small>(side by side 2 times)</small></h4><div class=row><span class=word><span class='chip '><i>the</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span>cat</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>s</i></span><span class='chip '><i>at</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>o</i></span><span class='chip '><i>n</i></span></span><span class=word><span class='chip new'><i><span class=sp>·</span>the</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>m</i></span><span class='chip '><i>at</i></span></span><span class=word><span class='chip '><i><span class=sp>·</span></i></span><span class='chip '><i>r</i></span><span class='chip '><i>a</i></span><span class='chip '><i>n</i></span></span></div></div>
+<p>After 6 merges <code>·the</code> and <code>·cat</code> are single pieces because they repeat; <code>·ran</code> appears once and stays in single letters.</p>
+<h4>The same on real text</h4>
+<p>First merges of our real training run (22,161,827 characters of TinyStories):</p><div class="tbl"><table class=t><tr><th>#</th><th>Pair glued</th><th>New piece</th><th>Times seen side by side</th></tr><tr><td>1</td><td><code><span class=sp>·</span></code> + <code>t</code></td><td><code><span class=sp>·</span>t</code></td><td>641,902</td></tr><tr><td>2</td><td><code>h</code> + <code>e</code></td><td><code>he</code></td><td>639,606</td></tr><tr><td>3</td><td><code><span class=sp>·</span></code> + <code>a</code></td><td><code><span class=sp>·</span>a</code></td><td>479,229</td></tr><tr><td>4</td><td><code><span class=sp>·</span></code> + <code>s</code></td><td><code><span class=sp>·</span>s</code></td><td>327,136</td></tr><tr><td>5</td><td><code><span class=sp>·</span></code> + <code>w</code></td><td><code><span class=sp>·</span>w</code></td><td>319,705</td></tr><tr><td>6</td><td><code><span class=sp>·</span>t</code> + <code>he</code></td><td><code><span class=sp>·</span>the</code></td><td>292,733</td></tr><tr><td>7</td><td><code>n</code> + <code>d</code></td><td><code>nd</code></td><td>291,700</td></tr><tr><td>8</td><td><code>e</code> + <code>d</code></td><td><code>ed</code></td><td>251,311</td></tr><tr><td>9</td><td><code><span class=sp>·</span></code> + <code>b</code></td><td><code><span class=sp>·</span>b</code></td><td>223,850</td></tr><tr><td>10</td><td><code><span class=sp>·</span>t</code> + <code>o</code></td><td><code><span class=sp>·</span>to</code></td><td>211,359</td></tr><tr><td>11</td><td><code><span class=sp>·</span>a</code> + <code>nd</code></td><td><code><span class=sp>·</span>and</code></td><td>196,057</td></tr><tr><td>12</td><td><code><span class=sp>·</span></code> + <code>h</code></td><td><code><span class=sp>·</span>h</code></td><td>180,175</td></tr></table></div>
+<p>Merge 1 glues a space onto <code>t</code>: "·t" starts "the", "to", "they", "then"..., the most common pair in English stories. By merge 6 "·the" is one piece.</p>
+<h4>The counts fall fast</h4><p>How many times the winning pair was seen, at different points in training:</p><svg viewBox='0 0 360 448' class=chart role=img aria-label='Count of the winning pair at each merge'><text x='84' y='16.8' class=lab text-anchor=end>merge 1</text><rect x='92' y='0' width='198.0' height='24' rx='4' class=bar><title>merge 1: 641,902</title></rect><text x='296.0' y='16.8' class=val>641,902</text><text x='84' y='48.8' class=lab text-anchor=end>merge 10</text><rect x='92' y='32' width='65.2' height='24' rx='4' class=bar><title>merge 10: 211,359</title></rect><text x='163.2' y='48.8' class=val>211,359</text><text x='84' y='80.8' class=lab text-anchor=end>merge 50</text><rect x='92' y='64' width='17.8' height='24' rx='4' class=bar><title>merge 50: 57,820</title></rect><text x='115.8' y='80.8' class=val>57,820</text><text x='84' y='112.8' class=lab text-anchor=end>merge 100</text><rect x='92' y='96' width='9.9' height='24' rx='4' class=bar><title>merge 100: 32,020</title></rect><text x='107.9' y='112.8' class=val>32,020</text><text x='84' y='144.8' class=lab text-anchor=end>merge 250</text><rect x='92' y='128' width='3.2' height='24' rx='4' class=bar><title>merge 250: 10,436</title></rect><text x='101.2' y='144.8' class=val>10,436</text><text x='84' y='176.8' class=lab text-anchor=end>merge 500</text><rect x='92' y='160' width='2.0' height='24' rx='4' class=bar><title>merge 500: 3,783</title></rect><text x='100.0' y='176.8' class=val>3,783</text><text x='84' y='208.8' class=lab text-anchor=end>merge 1,000</text><rect x='92' y='192' width='2.0' height='24' rx='4' class=bar><title>merge 1,000: 1,283</title></rect><text x='100.0' y='208.8' class=val>1,283</text><text x='84' y='240.8' class=lab text-anchor=end>merge 2,000</text><rect x='92' y='224' width='2.0' height='24' rx='4' class=bar><title>merge 2,000: 359</title></rect><text x='100.0' y='240.8' class=val>359</text><text x='84' y='272.8' class=lab text-anchor=end>merge 3,000</text><rect x='92' y='256' width='2.0' height='24' rx='4' class=bar><title>merge 3,000: 179</title></rect><text x='100.0' y='272.8' class=val>179</text><text x='84' y='304.8' class=lab text-anchor=end>merge 4,000</text><rect x='92' y='288' width='2.0' height='24' rx='4' class=bar><title>merge 4,000: 105</title></rect><text x='100.0' y='304.8' class=val>105</text><text x='84' y='336.8' class=lab text-anchor=end>merge 5,000</text><rect x='92' y='320' width='2.0' height='24' rx='4' class=bar><title>merge 5,000: 53</title></rect><text x='100.0' y='336.8' class=val>53</text><text x='84' y='368.8' class=lab text-anchor=end>merge 6,000</text><rect x='92' y='352' width='2.0' height='24' rx='4' class=bar><title>merge 6,000: 26</title></rect><text x='100.0' y='368.8' class=val>26</text><text x='84' y='400.8' class=lab text-anchor=end>merge 7,000</text><rect x='92' y='384' width='2.0' height='24' rx='4' class=bar><title>merge 7,000: 15</title></rect><text x='100.0' y='400.8' class=val>15</text><text x='84' y='432.8' class=lab text-anchor=end>merge 8,000</text><rect x='92' y='416' width='2.0' height='24' rx='4' class=bar><title>merge 8,000: 9</title></rect><text x='100.0' y='432.8' class=val>9</text></svg>
+<p>The first merge covered 641,902 pairs; merge 8,000 only 9. Late merges are rare words and names (merge 7,500 was "·Kayla"). That is why lists stop somewhere: each extra entry helps less.</p>
+<h4>What the merges buy: shorter text</h4><p>Average bytes per token on the new stories as training goes on (higher = fewer tokens for the same text):</p><svg viewBox='0 0 360 230' class=chart role=img aria-label='Bytes per token on unseen text vs number of merges'><line x1=44 x2=346 y1=196.0 y2=196.0 class=grid /><text x=38 y=200.0 class=ax text-anchor=end>0</text><line x1=44 x2=346 y1=157.2 y2=157.2 class=grid /><text x=38 y=161.2 class=ax text-anchor=end>1</text><line x1=44 x2=346 y1=118.4 y2=118.4 class=grid /><text x=38 y=122.4 class=ax text-anchor=end>2</text><line x1=44 x2=346 y1=79.6 y2=79.6 class=grid /><text x=38 y=83.6 class=ax text-anchor=end>3</text><line x1=44 x2=346 y1=40.8 y2=40.8 class=grid /><text x=38 y=44.8 class=ax text-anchor=end>4</text><text x=44.0 y=212 class=ax text-anchor=middle>0</text><text x=119.5 y=212 class=ax text-anchor=middle>2,000</text><text x=195.0 y=212 class=ax text-anchor=middle>4,000</text><text x=270.5 y=212 class=ax text-anchor=middle>6,000</text><text x=346.0 y=212 class=ax text-anchor=middle>8,000</text><line x1=44 x2=346 y1=33.5 y2=33.5 class=ref /><text x=346 y=28.5 class=reflab text-anchor=end>GPT-4o 4.19</text><polyline points='44.0,157.2 47.8,124.6 53.4,103.6 62.9,85.0 81.8,67.0 119.5,52.3 157.2,46.1 195.0,42.4 232.8,40.1 270.5,39.0 308.2,38.5 346.0,38.1' class=ln /><circle cx=44.0 cy=157.2 r=4 class=dot><title>0 merges: 1.00 bytes per token</title></circle><circle cx=47.8 cy=124.6 r=4 class=dot><title>100 merges: 1.84 bytes per token</title></circle><circle cx=53.4 cy=103.6 r=4 class=dot><title>250 merges: 2.38 bytes per token</title></circle><circle cx=62.9 cy=85.0 r=4 class=dot><title>500 merges: 2.86 bytes per token</title></circle><circle cx=81.8 cy=67.0 r=4 class=dot><title>1,000 merges: 3.33 bytes per token</title></circle><circle cx=119.5 cy=52.3 r=4 class=dot><title>2,000 merges: 3.70 bytes per token</title></circle><circle cx=157.2 cy=46.1 r=4 class=dot><title>3,000 merges: 3.86 bytes per token</title></circle><circle cx=195.0 cy=42.4 r=4 class=dot><title>4,000 merges: 3.96 bytes per token</title></circle><circle cx=232.8 cy=40.1 r=4 class=dot><title>5,000 merges: 4.02 bytes per token</title></circle><circle cx=270.5 cy=39.0 r=4 class=dot><title>6,000 merges: 4.05 bytes per token</title></circle><circle cx=308.2 cy=38.5 r=4 class=dot><title>7,000 merges: 4.06 bytes per token</title></circle><circle cx=346.0 cy=38.1 r=4 class=dot><title>8,000 merges: 4.07 bytes per token</title></circle><text x=195.0 y=226 class=ax text-anchor=middle>merges learned</text><text x=12 y=98.0 class=ax transform='rotate(-90 12 98.0)' text-anchor=middle>bytes per token</text></svg>
+<p>With 0 merges every byte is a token (1.00). After 1,000 merges a token covers 3.33 bytes, after 8,000 merges 4.07. For comparison on the same text: GPT-2's tokenizer (50,000 merges) 4.02, GPT-4o's (about 200,000 entries) 4.19. Most of the gain comes from the first few thousand merges.</p>
+<p>Notice our tiny list almost matches GPT-2 here. That is not because it is better: it was trained on exactly this kind of text, while GPT-2's 50,000 entries are spread over all kinds of web text. <b>A tokenizer is best at the text it was trained on.</b></p>
+<h2 id="why-the-hello-forms-got-different-pieces">9. Why the hello forms got different pieces</h2>
+<p>Back to the hello puzzle from section 1, now inside our own tokenizer. How often each form appears in the training text:</p><svg viewBox='0 0 360 160' class=chart role=img aria-label='Times each hello form appears in the training text'><text x='84' y='16.8' class=lab text-anchor=end>Hello</text><rect x='92' y='0' width='198.0' height='24' rx='4' class=bar><title>Hello: 1,386</title></rect><text x='296.0' y='16.8' class=val>1,386</text><text x='84' y='48.8' class=lab text-anchor=end>·hello</text><rect x='92' y='32' width='38.7' height='24' rx='4' class=bar><title>·hello: 271</title></rect><text x='136.7' y='48.8' class=val>271</text><text x='84' y='80.8' class=lab text-anchor=end>hello</text><rect x='92' y='64' width='6.1' height='24' rx='4' class=bar><title>hello: 43</title></rect><text x='104.1' y='80.8' class=val>43</text><text x='84' y='112.8' class=lab text-anchor=end>·Hello</text><rect x='92' y='96' width='2.0' height='24' rx='4' class=bar><title>·Hello: 8</title></rect><text x='100.0' y='112.8' class=val>8</text><text x='84' y='144.8' class=lab text-anchor=end>HELLO</text><rect x='92' y='128' width='2.0' height='24' rx='4' class=bar><title>HELLO: 0</title></rect><text x='100.0' y='144.8' class=val>0</text></svg>
+<p>and what training did with them:</p><div class="tbl"><table class=t><tr><th>Text, and how our tokenizer splits it</th><th>Times in training text</th><th>Became one piece at</th></tr><tr><td><code>Hello</code><div class=row><span class=word><span class='chip '><i>Hello</i></span></span></div></td><td>1,386</td><td>merge #950</td></tr><tr><td><code><span class=sp>·</span>hello</code><div class=row><span class=word><span class='chip '><i><span class=sp>·</span>hello</i></span></span></div></td><td>271</td><td>merge #2,348</td></tr><tr><td><code>hello</code><div class=row><span class=word><span class='chip '><i>hello</i></span></span></div></td><td>43</td><td>merge #5,262</td></tr><tr><td><code><span class=sp>·</span>Hello</code><div class=row><span class=word><span class='chip '><i><span class=sp>·</span>He</i></span><span class='chip '><i>llo</i></span></span></div></td><td>8</td><td>never</td></tr><tr><td><code>HELLO</code><div class=row><span class=word><span class='chip '><i>H</i></span><span class='chip '><i>E</i></span><span class='chip '><i>L</i></span><span class='chip '><i>L</i></span><span class='chip '><i>O</i></span></span></div></td><td>0</td><td>never</td></tr><tr><td><code><span class=sp>·</span>happy</code><div class=row><span class=word><span class='chip '><i><span class=sp>·</span>happy</i></span></span></div></td><td>25,863</td><td>merge #121</td></tr><tr><td><code><span class=sp>·</span>unbelievable</code><div class=row><span class=word><span class='chip '><i><span class=sp>·</span>un</i></span><span class='chip '><i>b</i></span><span class='chip '><i>elie</i></span><span class='chip '><i>v</i></span><span class='chip '><i>able</i></span></span></div></td><td>1</td><td>never</td></tr></table></div>
+<div class="box key">The more often a form appears, the sooner it becomes one piece: <code>Hello</code> at merge 950, <code>·hello</code> at 2,348, <code>hello</code> at 5,262. <code>·Hello</code> (only 8 times) never makes it, and <code>HELLO</code> (0 times) stays as 5 single letters. Different forms are simply different byte sequences with different counts, so they end up as different list entries.</div>
+<div class="part"><div class="pt">Part 3. Using a trained tokenizer</div><p>Training happens once. Encoding and decoding happen every time you send a message.</p></div>
+<h2 id="encoding-turning-your-text-into-ids">10. Encoding: turning your text into IDs</h2>
+<p>When you send a message, the tokenizer does not search for the longest matching word. It replays the training:</p>
+<ol><li>Step 0 with the same rule: cut into chunks.</li><li>Write each chunk as bytes.</li>
+<li>Look at every neighbouring pair; if a rule exists for it, apply the rule that was <b>learned earliest</b>. Repeat until no rule applies.</li></ol>
+<p>In GPT-4o's tokenizer a piece's ID is also its rule's position in the learned order (lower ID = learned earlier; tiktoken's own reference code calls IDs "ranks" and says they "correspond to merge priority"). So we can watch GPT-4o encode each hello, one glue at a time (green = just glued):</p>
+<div class=path><h4 class=mono>hello</h4><div class=row><span class='chip '><i>h</i><b>71</b></span><span class='chip '><i>e</i><b>68</b></span><span class='chip '><i>l</i><b>75</b></span><span class='chip '><i>l</i><b>75</b></span><span class='chip '><i>o</i><b>78</b></span></div><div class=row><span class='chip new'><i>he</i><b>273</b></span><span class='chip '><i>l</i><b>75</b></span><span class='chip '><i>l</i><b>75</b></span><span class='chip '><i>o</i><b>78</b></span></div><div class=row><span class='chip '><i>he</i><b>273</b></span><span class='chip new'><i>ll</i><b>680</b></span><span class='chip '><i>o</i><b>78</b></span></div><div class=row><span class='chip new'><i>hell</i><b>10,844</b></span><span class='chip '><i>o</i><b>78</b></span></div><div class=row><span class='chip new'><i>hello</i><b>24,912</b></span></div></div><div class=path><h4 class=mono>Hello</h4><div class=row><span class='chip '><i>H</i><b>39</b></span><span class='chip '><i>e</i><b>68</b></span><span class='chip '><i>l</i><b>75</b></span><span class='chip '><i>l</i><b>75</b></span><span class='chip '><i>o</i><b>78</b></span></div><div class=row><span class='chip '><i>H</i><b>39</b></span><span class='chip new'><i>el</i><b>296</b></span><span class='chip '><i>l</i><b>75</b></span><span class='chip '><i>o</i><b>78</b></span></div><div class=row><span class='chip '><i>H</i><b>39</b></span><span class='chip new'><i>ell</i><b>596</b></span><span class='chip '><i>o</i><b>78</b></span></div><div class=row><span class='chip '><i>H</i><b>39</b></span><span class='chip new'><i>ello</i><b>6,053</b></span></div><div class=row><span class='chip new'><i>Hello</i><b>13,225</b></span></div></div><div class=path><h4 class=mono><span class=sp>·</span>hello</h4><div class=row><span class='chip '><i><span class=sp>·</span></i><b>220</b></span><span class='chip '><i>h</i><b>71</b></span><span class='chip '><i>e</i><b>68</b></span><span class='chip '><i>l</i><b>75</b></span><span class='chip '><i>l</i><b>75</b></span><span class='chip '><i>o</i><b>78</b></span></div><div class=row><span class='chip '><i><span class=sp>·</span></i><b>220</b></span><span class='chip new'><i>he</i><b>273</b></span><span class='chip '><i>l</i><b>75</b></span><span class='chip '><i>l</i><b>75</b></span><span class='chip '><i>o</i><b>78</b></span></div><div class=row><span class='chip new'><i><span class=sp>·</span>he</i><b>501</b></span><span class='chip '><i>l</i><b>75</b></span><span class='chip '><i>l</i><b>75</b></span><span class='chip '><i>o</i><b>78</b></span></div><div class=row><span class='chip '><i><span class=sp>·</span>he</i><b>501</b></span><span class='chip new'><i>ll</i><b>680</b></span><span class='chip '><i>o</i><b>78</b></span></div><div class=row><span class='chip new'><i><span class=sp>·</span>hell</i><b>15,760</b></span><span class='chip '><i>o</i><b>78</b></span></div><div class=row><span class='chip new'><i><span class=sp>·</span>hello</i><b>40,617</b></span></div></div><div class=path><h4 class=mono><span class=sp>·</span>Hello</h4><div class=row><span class='chip '><i><span class=sp>·</span></i><b>220</b></span><span class='chip '><i>H</i><b>39</b></span><span class='chip '><i>e</i><b>68</b></span><span class='chip '><i>l</i><b>75</b></span><span class='chip '><i>l</i><b>75</b></span><span class='chip '><i>o</i><b>78</b></span></div><div class=row><span class='chip '><i><span class=sp>·</span></i><b>220</b></span><span class='chip '><i>H</i><b>39</b></span><span class='chip new'><i>el</i><b>296</b></span><span class='chip '><i>l</i><b>75</b></span><span class='chip '><i>o</i><b>78</b></span></div><div class=row><span class='chip new'><i><span class=sp>·</span>H</i><b>487</b></span><span class='chip '><i>el</i><b>296</b></span><span class='chip '><i>l</i><b>75</b></span><span class='chip '><i>o</i><b>78</b></span></div><div class=row><span class='chip '><i><span class=sp>·</span>H</i><b>487</b></span><span class='chip new'><i>ell</i><b>596</b></span><span class='chip '><i>o</i><b>78</b></span></div><div class=row><span class='chip '><i><span class=sp>·</span>H</i><b>487</b></span><span class='chip new'><i>ello</i><b>6,053</b></span></div><div class=row><span class='chip new'><i><span class=sp>·</span>Hello</i><b>32,949</b></span></div></div>
+<div class="box key"><code>hello</code>: h+e, l+l, he+ll, hell+o. <code>Hello</code> takes a different road: e+l, el+l, ell+o, then H+ello. Different roads end at different entries, so different numbers.</div><p>And HELLO:</p><div class=path><h4 class=mono>HELLO</h4><div class=row><span class='chip '><i>H</i><b>39</b></span><span class='chip '><i>E</i><b>36</b></span><span class='chip '><i>L</i><b>43</b></span><span class='chip '><i>L</i><b>43</b></span><span class='chip '><i>O</i><b>46</b></span></div><div class=row><span class='chip '><i>H</i><b>39</b></span><span class='chip '><i>E</i><b>36</b></span><span class='chip '><i>L</i><b>43</b></span><span class='chip new'><i>LO</i><b>2,699</b></span></div><div class=row><span class='chip new'><i>HE</i><b>2,895</b></span><span class='chip '><i>L</i><b>43</b></span><span class='chip '><i>LO</i><b>2,699</b></span></div><div class=row><span class='chip new'><i>HEL</i><b>111,642</b></span><span class='chip '><i>LO</i><b>2,699</b></span></div></div>
+<p>It stops at <b>HEL</b> + <b>LO</b> because there is no rule that glues those two: the list has no single "HELLO" entry. All-caps HELLO was not common enough in the text OpenAI built the list from to earn an entry before the list was full.</p>
+<h2 id="decoding-turning-ids-back-into-text">11. Decoding: turning IDs back into text</h2>
+<p>The reverse is simple: look up each ID's bytes, join all the bytes, read them as UTF-8. For IDs that came from encoding real text you always get back exactly the text you started with.</p>
+<p>One catch: a single piece can be <b>half a character</b>. GPT-4o writes the face-palm emoji (13 bytes) as 5 tokens:</p><div class=row><span class='chip '><i>&lt;20<span class=sp>·</span>f0<span class=sp>·</span>9f<span class=sp>·</span>a4&gt;</i><b>93,643</b></span><span class='chip '><i>&lt;a6&gt;</i><b>99</b></span><span class='chip '><i>‍</i><b>2,524</b></span><span class='chip '><i>♂</i><b>178,729</b></span><span class='chip '><i>️</i><b>15,148</b></span></div>
+<p>The first and some middle pieces are just fragments of the emoji's bytes. Alone they are not valid text; only together do they decode to 🤦‍♂️. (This is also why one emoji can cost several tokens: GPT-4 uses 8 for it.)</p>
+<h4>The decoding chain, step by step</h4>
+<p>When a model produces token IDs, this is what turns them into text. Example: GPT-2 writes the curly quote “ as two tokens, IDs 447 + 250.</p>
+<ol><li><b>Look up each ID's bytes</b> in the tokenizer's list. A piece can be any number of bytes, not always a pair: ID 447 = bytes <code>226 128</code> (half a character), ID 250 = byte <code>156</code>. "h" is 1 byte, "·hello" is 6.</li>
+<li><b>Join all the bytes</b> into one row: 226 128 156.</li>
+<li><b>The UTF-8 reader walks along the row using the labels</b> (section 2b): a byte starting with <code>0</code> is a character on its own; <code>110</code> means "me plus <b>1</b> more byte"; <code>1110</code> means "me plus <b>2</b> more" (226 is 1110 0010); every following byte must start with <code>10</code>. Here 128 and 156 both do, so the three bytes give “.</li></ol>
+<h4>What if the model picks a token that does not finish the character?</h4>
+<p>It can happen. The model picks one token at a time, and nothing inside it forces the bytes to fit together. Three things deal with it:</p>
+<p><b>1. Usually the model continues correctly.</b> In its training text the piece <code>226 128</code> was always followed by the rest of a character (156, 157, 153…), never by a letter, so it learns that very strongly. A wrong pick is rare, but not impossible.</p>
+<p><b>2. If it happens, the decoder does not crash; it shows a replacement mark.</b> Tested with GPT-2's real decoder (OpenAI's tiktoken):</p><div class="tbl"><table class=t><tr><th>Token IDs</th><th>Bytes</th><th>Decoded text</th></tr><tr><td>447 + 250 (correct)</td><td><span class=pairrow><code>226 128</code><code>156</code></span></td><td><span class=big>“</span></td></tr><tr><td>447 + 71 (half piece, then h)</td><td><span class=pairrow><code>226 128</code><code>104</code></span></td><td><span class=big>�h</span></td></tr><tr><td>447 (half piece alone)</td><td><span class=pairrow><code>226 128</code></span></td><td><span class=big>�</span></td></tr><tr><td>447 + 251 (half piece, then 157)</td><td><span class=pairrow><code>226 128</code><code>157</code></span></td><td><span class=big>”</span></td></tr></table></div>
+<p>Byte 104 ("h") starts with <code>0</code>, not <code>10</code>, so the reader knows the character was broken. It writes <b>�</b> (the official Unicode "replacement character") in place of the broken bytes and carries on normally with h. tiktoken does this by default (its decode has <code>errors="replace"</code>, the same setting as <code>minibpe.py</code> in Part 6). In strict mode it stops with an error instead: <code class=wrap>&#x27;utf-8&#x27; codec can&#x27;t decode bytes in position 0-1: invalid continuation byte</code>.</p>
+<p><b>3. A different wrong pick can give a valid but different character.</b> If the model picks byte 157 instead of 156 after <code>226 128</code>, the bytes fit perfectly and you get ” instead of “. No error at all: that is just an ordinary wrong prediction, like picking the wrong word.</p>
+<p><b>While text streams in word by word</b>, a program showing it receives the half piece <code>226 128</code> first. It cannot print anything yet, so it waits for the next token to finish the character. That is why a well-built chat app does not flash half a character; at worst you would see � if the model really did go wrong.</p>
+<h2 id="special-tokens">12. Special tokens</h2>
+<p>Some entries are not made by merging at all. They are added by hand to mark structure, and normal text can never produce them:</p><div class="tbl"><table class=t><tr><th>Tokenizer</th><th>Special tokens and their IDs</th></tr><tr><td>gpt2</td><td><span class=mono>&lt;|endoftext|&gt; = 50,256</span></td></tr><tr><td>cl100k_base</td><td><span class=mono>&lt;|endoftext|&gt; = 100,257, &lt;|fim_prefix|&gt; = 100,258, &lt;|fim_middle|&gt; = 100,259, &lt;|fim_suffix|&gt; = 100,260, &lt;|endofprompt|&gt; = 100,276</span></td></tr><tr><td>o200k_base</td><td><span class=mono>&lt;|endoftext|&gt; = 199,999, &lt;|endofprompt|&gt; = 200,018</span></td></tr></table></div>
+<p>For example <code>&lt;|endoftext|&gt;</code> marks where one document ends. In GPT-2 it is ID 50,256, the very last entry after the 256 bytes and 50,000 merges. Chat models add markers for "this is the user / this is the assistant" (a chat template). SentencePiece reserves similar IDs: &lt;unk&gt;, &lt;s&gt;, &lt;/s&gt;, &lt;pad&gt;.</p>
+<div class="part"><div class="pt">Part 4. Inside the model</div><p>The tokenizer splits hello apart. Training puts the meaning back.</p></div>
+<h2 id="from-an-id-to-a-meaning">13. From an ID to a meaning</h2>
+<p>Each ID picks a row in the embedding table. Before training the rows are random. During training, pieces that are used in similar places get pushed towards similar rows, because that helps the model predict the next piece.</p>
+<p>Real check on SmolLM-135M. "Cosine" measures how similar two rows are (1 = same direction). The nearest rows to each hello form:</p><div class="tbl"><table class=t><tr><th>Token</th><th>Its 4 nearest rows (cosine)</th></tr><tr><td><code>hello</code></td><td><span class=mono>Hello <small>0.78</small>, <span class=sp>·</span>hello <small>0.76</small>, <span class=sp>·</span>Hello <small>0.70</small>, <span class=sp>·</span>greetings <small>0.60</small></span></td></tr><tr><td><code><span class=sp>·</span>hello</code></td><td><span class=mono>hello <small>0.76</small>, <span class=sp>·</span>Hello <small>0.76</small>, Hello <small>0.69</small>, <span class=sp>·</span>goodbye <small>0.61</small></span></td></tr><tr><td><code>Hello</code></td><td><span class=mono>hello <small>0.78</small>, <span class=sp>·</span>Hello <small>0.77</small>, Hi <small>0.74</small>, <span class=sp>·</span>hello <small>0.69</small></span></td></tr><tr><td><code><span class=sp>·</span>Hello</code></td><td><span class=mono>Hello <small>0.77</small>, <span class=sp>·</span>hello <small>0.76</small>, hello <small>0.70</small>, Hi <small>0.63</small></span></td></tr></table></div>
+<div class="box key">Out of 49,152 entries, the closest row to <b>every</b> hello form is another hello form, followed by other greetings (Hi, ·greetings, ·goodbye). Within the four forms the cosine is 0.69 to 0.78, while two random entries average 0.34 and an unrelated word like ·table scores about 0.05. The tokenizer split them apart; training learned they mean nearly the same.</div>
+<h2 id="how-big-should-the-list-be">14. How big should the list be?</h2>
+<p>Sizes in real tokenizers (measured from their files):</p><div class="tbl"><table class=t><tr><th>Tokenizer</th><th>Entries</th></tr><tr><td>GPT-2 (2019)</td><td>50,257</td></tr><tr><td>GPT-4 (cl100k_base)</td><td>100,277</td></tr><tr><td>GPT-4o / GPT-5 (o200k_base)</td><td>200,019</td></tr><tr><td>Llama 3.2</td><td>128,000 + 256 added</td></tr><tr><td>Qwen2.5</td><td>151,643 + 22 added</td></tr><tr><td>Gemma 3</td><td>262,144</td></tr></table></div>
+<p>The trade-off:</p><ul>
+<li><b>Bigger list</b> &rarr; more words are one piece &rarr; shorter inputs (our curve in section 8), so more text fits in the model's context and each request is cheaper and faster.</li>
+<li><b>But</b> every entry needs its own row of learned numbers (in SmolLM-135M the table is already 21% of the model), and the model must score every entry at every step.</li>
+<li>Rare entries are seen only a few times during model training, so their rows stay poorly trained. The extreme case is the glitch token (section 17).</li></ul>
+<div class="part"><div class="pt">Part 5. Consequences</div><p>Odd behaviour that comes straight from the tokenizer.</p></div>
+<h2 id="numbers">15. Numbers</h2>
+<p>How "1234567" is cut: GPT-2 123 | 45 | 67; GPT-4 and GPT-4o 123 | 456 | 7 (their step 0 allows at most 3 digits, grouped from the left); Qwen2.5 and Gemma 3 one digit per token (the Gemma 3 report lists "split digits" as a design choice of its tokenizer). " 2024" is one token in GPT-2 but "202" + "4" in GPT-4.</p>
+<p>Research: Singh &amp; Strouse 2024 tested GPT-3.5 and GPT-4 on arithmetic and found that grouping digits <b>from the right</b> (forced by writing numbers with commas, 1,234,567) "leads to largely improved performance", and the errors with left-to-right grouping follow fixed patterns. They also note LLaMa and PaLM chose single-digit tokens.</p>
+<h2 id="other-languages">16. Other languages</h2>
+<p>The list is learned from example text, so languages that were rare in that text get few entries and are cut into many small pieces. Petrov et al. 2023 measured the same text translated into many languages: tokenized lengths differ "up to 15 times in some cases", and even byte-level models show "over 4 times the difference" for some pairs. That means higher cost, slower answers and less room in the context window for those users.</p>
+<h2 id="glitch-tokens">17. Glitch tokens</h2>
+<p>"·SolidGoldMagikarp" is a single entry in GPT-2's list (so it was frequent in the text the tokenizer was trained on), but almost never appeared in the text the model was trained on. So its row was barely trained. The paper says such inputs can "induce unwanted model behaviour". Land &amp; Bartolo 2024 define these as "tokens present in the tokenizer vocabulary but that are nearly or entirely absent during model training" and found them across many models. In GPT-4 and GPT-4o the same string is 5 pieces (GPT-4o's step 0 already cuts it at the capital letters).</p>
+
+<h2 id="other-recipes">18. Other recipes</h2>
+<ul><li><b>BPE</b> (Sennrich et al. 2016, from a 1994 compression trick): start small, glue the most frequent pair. Used by GPT, Llama, Qwen, Gemma.</li>
+<li><b>WordPiece</b>: used by BERT (2018) with a 30,000-token list. Also builds pieces of words; how it picks them differs from BPE.</li>
+<li><b>Unigram</b> (Kudo 2018): the opposite direction. Start with a "reasonably big seed vocabulary", then repeatedly remove the pieces whose removal hurts the least, keeping the top 80% each round, until the target size; single characters are always kept so nothing is missing.</li>
+<li><b>SentencePiece</b> (Kudo &amp; Richardson 2018): a toolkit, not a fourth algorithm. It can train BPE or Unigram directly on raw text, with the "▁" space marker.</li></ul>
+<h2 id="cost-and-context-limits">19. Cost and context limits</h2>
+<p>API prices and context windows are counted in tokens, not words or characters. So everything above (the list size, step 0, the language, emoji, how numbers are cut) changes how much a request costs and how much text fits.</p>
+<div class="part"><div class="pt">Part 6. Build your own tokenizer</div><p>Complete, working code you can copy, run and change.</p></div>
+<h2 id="the-complete-code">20. The complete code</h2>
+<p>This is a full byte-level BPE tokenizer in one file, about 200 lines including explanations, following exactly the recipe of Parts 2 and 3. It can train on any text file, encode, decode, handle special tokens, and save and load itself. It is the same algorithm I used for every number on this page, and the tests in section 25 check that it reproduces them exactly.</p>
+<p><b>You need:</b> Python 3.8 or newer, and one extra package: <code class=wrap>pip install regex</code>. (Python's built-in <code>re</code> does not understand <code>\p{L}</code>, "any letter in any language", which the GPT-2 step-0 pattern uses.)</p>
+<p>Save it as <code>minibpe.py</code>, or download the files: <a href="code/minibpe.py" download>minibpe.py</a> · <a href="code/test_minibpe.py" download>test_minibpe.py</a> · <a href="code/README.md">README</a></p><div class=code><button class=copy data-for='fullcode'>Copy</button><pre id='fullcode'>r&quot;&quot;&quot;
+minibpe.py - a complete byte-level BPE tokenizer in one file.
+
+It uses the same recipe as GPT-2&#x27;s tokenizer:
+  step 0: cut the text into word-sized chunks with a fixed pattern (a space stays on the front of a word)
+  step 1: write every chunk as its UTF-8 bytes (256 possible values = the starting list)
+  step 2: count every pair of neighbouring pieces, glue the most frequent pair into a new piece
+  step 3: repeat until the list has the size you asked for
+
+What you need:
+  Python 3.8 or newer
+  the &quot;regex&quot; package (pip install regex). Python&#x27;s built-in &quot;re&quot; module does not understand
+  \p{L} (&quot;any letter in any language&quot;), which the GPT-2 pattern needs.
+
+Try it:
+  python minibpe.py                      train on a small built-in sample
+  python minibpe.py my_text.txt 1000     train on your own text file, list size 1000
+&quot;&quot;&quot;
+
+import json
+import sys
+from collections import Counter
+
+import regex
+
+# Step 0 pattern, copied from GPT-2 (OpenAI&#x27;s tiktoken library, &quot;gpt2&quot; encoding).
+# Read it as &quot;try these alternatives, left to right&quot;:
+#   &#x27;(?:[sdmt]|ll|ve|re)   English endings after an apostrophe: &#x27;s &#x27;t &#x27;re &#x27;ve &#x27;m &#x27;ll &#x27;d
+#    ?\p{L}+               an optional space, then one or more letters        ( hello)
+#    ?\p{N}+               an optional space, then one or more digits         ( 2024)
+#    ?[^\s\p{L}\p{N}]+     an optional space, then other symbols              ( !!)
+#   \s+(?!\S)              a run of spaces, leaving the last one for the next word
+#   \s+                    any other run of spaces / new lines
+GPT2_SPLIT_PATTERN = r&quot;&quot;&quot;&#x27;(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+&quot;&quot;&quot;
+
+
+def count_pairs(ids, counts, weight=1):
+    &quot;&quot;&quot;Add every neighbouring pair in the list `ids` to the Counter `counts`.
+
+    Example: ids = [104, 101, 108, 108, 111]  (&quot;hello&quot;)
+    pairs:   (104,101) (101,108) (108,108) (108,111), each counted `weight` times.
+    &quot;&quot;&quot;
+    for pair in zip(ids, ids[1:]):
+        counts[pair] += weight
+
+
+def merge_pair(ids, pair, new_id):
+    &quot;&quot;&quot;Return a new list where every occurrence of `pair` side by side is replaced by `new_id`.
+
+    Example: merge_pair([104, 101, 108, 108, 111], (108, 108), 300)  -&gt;  [104, 101, 300, 111]
+    &quot;&quot;&quot;
+    out = []
+    i = 0
+    while i &lt; len(ids):
+        if i + 1 &lt; len(ids) and ids[i] == pair[0] and ids[i + 1] == pair[1]:
+            out.append(new_id)   # found the pair: write the new piece, skip both
+            i += 2
+        else:
+            out.append(ids[i])   # not the pair: copy this piece unchanged
+            i += 1
+    return out
+
+
+class Tokenizer:
+    &quot;&quot;&quot;Holds what a tokenizer knows, and the four things it can do: train, encode, decode, save/load.&quot;&quot;&quot;
+
+    def __init__(self, pattern=GPT2_SPLIT_PATTERN):
+        self.pattern = pattern
+        self.splitter = regex.compile(pattern)
+        # merges: (left id, right id) -&gt; new id. Python dicts remember insertion order,
+        # so this is also the order in which the merges were learned.
+        self.merges = {}
+        # vocab: id -&gt; the bytes that piece stands for. It starts with the 256 single bytes.
+        self.vocab = {i: bytes([i]) for i in range(256)}
+        # special tokens: name -&gt; id, e.g. &quot;&lt;|endoftext|&gt;&quot; -&gt; 1000. Added by hand, never learned.
+        self.special = {}
+
+    # ------------------------------------------------------------------ training
+    def train(self, text, vocab_size, verbose=False):
+        &quot;&quot;&quot;Learn (vocab_size - 256) merges from `text`.&quot;&quot;&quot;
+        if vocab_size &lt; 256:
+            raise ValueError(&quot;vocab_size must be at least 256 (the single bytes)&quot;)
+        if self.merges:
+            raise ValueError(&quot;this tokenizer is already trained; make a new Tokenizer()&quot;)
+
+        # Step 0: cut into chunks, and count how often each different chunk appears.
+        # Most chunks repeat (&quot; the&quot; appears thousands of times), so we keep each different
+        # chunk once together with its count. Much less work than looking at every copy.
+        chunk_counts = Counter(self.splitter.findall(text))
+
+        # Step 1: every chunk becomes its list of byte values.
+        words = [[list(chunk.encode(&quot;utf-8&quot;)), count] for chunk, count in chunk_counts.items()]
+
+        for step in range(vocab_size - 256):
+            # Step 2a: count every neighbouring pair inside every chunk.
+            pair_counts = Counter()
+            for ids, count in words:
+                count_pairs(ids, pair_counts, count)
+            if not pair_counts:
+                break  # every chunk is already a single piece: nothing left to merge
+
+            # Step 2b: the most frequent pair wins. If two pairs tie, the one with the smaller
+            # ids wins, so training always gives the same result for the same text.
+            best = max(pair_counts, key=lambda p: (pair_counts[p], -p[0], -p[1]))
+            new_id = 256 + step
+
+            # Step 2c: glue the winner everywhere, and remember the rule.
+            for word in words:
+                word[0] = merge_pair(word[0], best, new_id)
+            self.merges[best] = new_id
+            self.vocab[new_id] = self.vocab[best[0]] + self.vocab[best[1]]
+
+            if verbose:
+                print(&quot;merge %d: %r + %r -&gt; %r  (seen %d times)&quot; % (
+                    step + 1, self.piece(best[0]), self.piece(best[1]), self.piece(new_id), pair_counts[best]))
+
+    def add_special_tokens(self, names):
+        &quot;&quot;&quot;Give hand-made marker tokens the next free ids. Call this after train().&quot;&quot;&quot;
+        for name in names:
+            if name not in self.special:
+                self.special[name] = len(self.vocab) + len(self.special)
+
+    # ------------------------------------------------------------------ encoding
+    def _encode_chunk(self, chunk_bytes):
+        &quot;&quot;&quot;Turn one chunk&#x27;s bytes into ids by replaying the learned merges, earliest first.&quot;&quot;&quot;
+        ids = list(chunk_bytes)
+        while len(ids) &gt;= 2:
+            # Of all neighbouring pairs, find the one whose merge was learned earliest
+            # (smallest new id). Pairs with no merge get &quot;infinity&quot;, so they never win.
+            pair = min(zip(ids, ids[1:]), key=lambda p: self.merges.get(p, float(&quot;inf&quot;)))
+            if pair not in self.merges:
+                break  # no neighbouring pair has a rule: we are done
+            ids = merge_pair(ids, pair, self.merges[pair])
+        return ids
+
+    def encode(self, text, allow_special=True):
+        &quot;&quot;&quot;Text -&gt; list of ids.&quot;&quot;&quot;
+        ids = []
+        if allow_special and self.special:
+            # Cut the text around the special tokens first, so &quot;&lt;|endoftext|&gt;&quot; becomes one id
+            # instead of being spelled out as &lt; | e n d ...
+            names = sorted(self.special, key=len, reverse=True)
+            parts = regex.split(&quot;(&quot; + &quot;|&quot;.join(regex.escape(n) for n in names) + &quot;)&quot;, text)
+        else:
+            parts = [text]
+        for part in parts:
+            if part in self.special and allow_special:
+                ids.append(self.special[part])
+                continue
+            for chunk in self.splitter.findall(part):
+                ids.extend(self._encode_chunk(chunk.encode(&quot;utf-8&quot;)))
+        return ids
+
+    # ------------------------------------------------------------------ decoding
+    def decode(self, ids):
+        &quot;&quot;&quot;List of ids -&gt; text. Join every piece&#x27;s bytes, then read them as UTF-8.&quot;&quot;&quot;
+        special_by_id = {i: name for name, i in self.special.items()}
+        data = b&quot;&quot;.join(special_by_id[i].encode(&quot;utf-8&quot;) if i in special_by_id else self.vocab[i] for i in ids)
+        # errors=&quot;replace&quot;: if the ids end in the middle of a character (half an emoji),
+        # show the replacement mark instead of crashing.
+        return data.decode(&quot;utf-8&quot;, errors=&quot;replace&quot;)
+
+    def piece(self, token_id):
+        &quot;&quot;&quot;The text one id stands for, for printing. A half character shows as its byte values.&quot;&quot;&quot;
+        for name, i in self.special.items():
+            if i == token_id:
+                return name
+        b = self.vocab[token_id]
+        try:
+            return b.decode(&quot;utf-8&quot;)
+        except UnicodeDecodeError:
+            return &quot;&lt;bytes &quot; + &quot; &quot;.join(str(x) for x in b) + &quot;&gt;&quot;
+
+    # ------------------------------------------------------------------ save / load
+    def save(self, path):
+        &quot;&quot;&quot;Write everything needed to rebuild this tokenizer to a JSON file.&quot;&quot;&quot;
+        data = {
+            &quot;pattern&quot;: self.pattern,
+            &quot;merges&quot;: [[a, b] for (a, b) in self.merges],   # in learned order
+            &quot;special&quot;: self.special,
+        }
+        with open(path, &quot;w&quot;, encoding=&quot;utf-8&quot;) as f:
+            json.dump(data, f, indent=1)
+
+    @classmethod
+    def load(cls, path):
+        &quot;&quot;&quot;Read a file written by save() and rebuild the tokenizer.&quot;&quot;&quot;
+        with open(path, encoding=&quot;utf-8&quot;) as f:
+            data = json.load(f)
+        tok = cls(data[&quot;pattern&quot;])
+        for step, (a, b) in enumerate(data[&quot;merges&quot;]):
+            new_id = 256 + step
+            tok.merges[(a, b)] = new_id
+            tok.vocab[new_id] = tok.vocab[a] + tok.vocab[b]
+        tok.special = data[&quot;special&quot;]
+        return tok
+
+
+# ---------------------------------------------------------------------- demo
+SAMPLE = &quot;&quot;&quot;Once upon a time there was a little cat. The cat liked to sit in the sun.
+One day the cat saw a big dog. &quot;Hello!&quot; said the cat. &quot;Hello,&quot; said the dog.
+The cat and the dog played in the sun all day, and then they went home to sleep.
+&quot;&quot;&quot;
+
+if __name__ == &quot;__main__&quot;:
+    if len(sys.argv) &gt;= 2:
+        with open(sys.argv[1], encoding=&quot;utf-8&quot;) as f:
+            text = f.read()
+        size = int(sys.argv[2]) if len(sys.argv) &gt;= 3 else 1000
+    else:
+        text, size = SAMPLE * 20, 300
+
+    tok = Tokenizer()
+    tok.train(text, size, verbose=True)
+    tok.add_special_tokens([&quot;&lt;|endoftext|&gt;&quot;])
+    tok.save(&quot;my_tokenizer.json&quot;)
+    print(&quot;\nlearned %d merges, list size %d (+%d special), saved to my_tokenizer.json&quot;
+          % (len(tok.merges), len(tok.vocab), len(tok.special)))
+
+    for test in [&quot;Hello! The cat sat in the sun.&quot;, &quot;hello HELLO&quot;, &quot;₹ 🙂&lt;|endoftext|&gt;&quot;]:
+        ids = tok.encode(test)
+        print(&quot;\n%r&quot; % test)
+        print(&quot;  ids:    %s&quot; % ids)
+        print(&quot;  pieces: %s&quot; % &quot; | &quot;.join(tok.piece(i) for i in ids))
+        assert tok.decode(ids) == test, &quot;decode(encode(text)) must give back the same text&quot;
+    print(&quot;\ndecode(encode(text)) gave back the exact text every time.&quot;)
+</pre></div>
+<p class=note>The next sections take it apart piece by piece. You only need basic Python (strings, if, for); everything else is explained.</p>
+<h2 id="python-you-need-for-this-code">21. Python you need for this code</h2>
+<p>A few Python tools appear that you may not have used yet. Each in one line:</p><div class="tbl"><table class=t><tr><th>Code</th><th>What it does</th></tr><tr><td><code>"hi".encode("utf-8")</code></td><td>Turns text into its bytes: <code>b'hi'</code>.</td></tr><tr><td><code>list(b"hi")</code></td><td>Bytes as a list of numbers: <code>[104, 105]</code>.</td></tr><tr><td><code>bytes([104, 105])</code></td><td>The reverse: numbers back to bytes, <code>b'hi'</code>. <code>.decode("utf-8")</code> turns bytes back into text.</td></tr><tr><td><code>(104, 105)</code></td><td>A <b>tuple</b>: like a list but it cannot change, so it can be used as a dictionary key. We use it for a pair of pieces.</td></tr><tr><td><code>d = {}</code>, <code>d[k] = v</code></td><td>A <b>dictionary</b>: looks up a value by its key. Since Python 3.7 it also remembers the order things were added.</td></tr><tr><td><code>Counter()</code></td><td>A dictionary for counting: <code>c[x] += 1</code> works even the first time you see <code>x</code> (it starts at 0).</td></tr><tr><td><code>zip(ids, ids[1:])</code></td><td>Walks two lists side by side. <code>ids[1:]</code> is the list without its first item, so this gives every neighbouring pair: (a,b), (b,c), (c,d)…</td></tr><tr><td><code>max(items, key=f)</code></td><td>The item with the biggest <code>f(item)</code>. <code>min</code> is the same for the smallest.</td></tr><tr><td><code>lambda p: …</code></td><td>A tiny unnamed function written in one line, handy for <code>key=</code>.</td></tr><tr><td><code>class Tokenizer:</code> and <code>self</code></td><td>A <b>class</b> bundles data (the merge rules, the list) with the functions that use it. <code>self</code> means "this tokenizer"; <code>self.merges</code> is its rule book.</td></tr><tr><td><code>regex.findall(pattern, text)</code></td><td>Returns every piece of <code>text</code> that matches the pattern, in order. This is step 0.</td></tr></table></div>
+<h2 id="step-0-and-the-two-helpers">22. Step 0 and the two helpers</h2>
+<h4>The step-0 pattern</h4><div class=code><pre>GPT2_SPLIT_PATTERN = r&quot;&quot;&quot;&#x27;(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+&quot;&quot;&quot;</pre></div>
+<p>This is GPT-2's rule from section 6, copied from OpenAI's tiktoken. The comments above it in the file explain each alternative. <code>r"..."</code> is a <i>raw string</i>: backslashes are kept as they are, which patterns need.</p>
+<h4>count_pairs: count every neighbouring pair</h4><div class=code><pre>def count_pairs(ids, counts, weight=1):
+    &quot;&quot;&quot;Add every neighbouring pair in the list `ids` to the Counter `counts`.
+
+    Example: ids = [104, 101, 108, 108, 111]  (&quot;hello&quot;)
+    pairs:   (104,101) (101,108) (108,108) (108,111), each counted `weight` times.
+    &quot;&quot;&quot;
+    for pair in zip(ids, ids[1:]):
+        counts[pair] += weight</pre></div>
+<p><code>ids</code> is one chunk as a list of numbers. <code>zip(ids, ids[1:])</code> gives every neighbouring pair. <code>counts</code> is shared across all chunks, so after looping over every chunk it holds the total for each pair. <code>weight</code> is how many times this chunk appears in the text: if "·the" appears 211,031 times, each of its pairs is added 211,031 times in one go, instead of looking at 211,031 copies.</p>
+<h4>merge_pair: glue one pair everywhere</h4><div class=code><pre>def merge_pair(ids, pair, new_id):
+    &quot;&quot;&quot;Return a new list where every occurrence of `pair` side by side is replaced by `new_id`.
+
+    Example: merge_pair([104, 101, 108, 108, 111], (108, 108), 300)  -&gt;  [104, 101, 300, 111]
+    &quot;&quot;&quot;
+    out = []
+    i = 0
+    while i &lt; len(ids):
+        if i + 1 &lt; len(ids) and ids[i] == pair[0] and ids[i + 1] == pair[1]:
+            out.append(new_id)   # found the pair: write the new piece, skip both
+            i += 2
+        else:
+            out.append(ids[i])   # not the pair: copy this piece unchanged
+            i += 1
+    return out</pre></div>
+<p>Walk through the list with a position <code>i</code>. If the item at <code>i</code> and the next one are the pair, write the new id once and jump 2 ahead; otherwise copy the item and move 1. Worked example, gluing (108, 108) = "l"+"l" into 300:</p>
+<div class="tbl"><table class=t><tr><th>i</th><th>ids[i], ids[i+1]</th><th>Is it the pair?</th><th>out so far</th></tr><tr><td>0</td><td>104, 101</td><td>no: copy 104</td><td>[104]</td></tr><tr><td>1</td><td>101, 108</td><td>no: copy 101</td><td>[104, 101]</td></tr><tr><td>2</td><td>108, 108</td><td><b>yes</b>: write 300, jump to 4</td><td>[104, 101, 300]</td></tr><tr><td>4</td><td>111 (last)</td><td>no: copy 111</td><td>[104, 101, 300, 111]</td></tr></table></div>
+<h2 id="the-tokenizer-and-how-it-trains">23. The Tokenizer and how it trains</h2>
+<h4>What a tokenizer remembers</h4><div class=code><pre>def __init__(self, pattern=GPT2_SPLIT_PATTERN):
+    self.pattern = pattern
+    self.splitter = regex.compile(pattern)
+    # merges: (left id, right id) -&gt; new id. Python dicts remember insertion order,
+    # so this is also the order in which the merges were learned.
+    self.merges = {}
+    # vocab: id -&gt; the bytes that piece stands for. It starts with the 256 single bytes.
+    self.vocab = {i: bytes([i]) for i in range(256)}
+    # special tokens: name -&gt; id, e.g. &quot;&lt;|endoftext|&gt;&quot; -&gt; 1000. Added by hand, never learned.
+    self.special = {}</pre></div>
+<p>Three things, matching the earlier parts: <code>merges</code>, the rule book in learned order (section 5's merge file); <code>vocab</code>, the list itself, id &rarr; bytes, starting with the 256 single bytes (section 7); <code>special</code>, the hand-made markers (section 12).</p>
+<h4>train: the whole of Part 2 in one function</h4><div class=code><pre>def train(self, text, vocab_size, verbose=False):
+    &quot;&quot;&quot;Learn (vocab_size - 256) merges from `text`.&quot;&quot;&quot;
+    if vocab_size &lt; 256:
+        raise ValueError(&quot;vocab_size must be at least 256 (the single bytes)&quot;)
+    if self.merges:
+        raise ValueError(&quot;this tokenizer is already trained; make a new Tokenizer()&quot;)
+
+    # Step 0: cut into chunks, and count how often each different chunk appears.
+    # Most chunks repeat (&quot; the&quot; appears thousands of times), so we keep each different
+    # chunk once together with its count. Much less work than looking at every copy.
+    chunk_counts = Counter(self.splitter.findall(text))
+
+    # Step 1: every chunk becomes its list of byte values.
+    words = [[list(chunk.encode(&quot;utf-8&quot;)), count] for chunk, count in chunk_counts.items()]
+
+    for step in range(vocab_size - 256):
+        # Step 2a: count every neighbouring pair inside every chunk.
+        pair_counts = Counter()
+        for ids, count in words:
+            count_pairs(ids, pair_counts, count)
+        if not pair_counts:
+            break  # every chunk is already a single piece: nothing left to merge
+
+        # Step 2b: the most frequent pair wins. If two pairs tie, the one with the smaller
+        # ids wins, so training always gives the same result for the same text.
+        best = max(pair_counts, key=lambda p: (pair_counts[p], -p[0], -p[1]))
+        new_id = 256 + step
+
+        # Step 2c: glue the winner everywhere, and remember the rule.
+        for word in words:
+            word[0] = merge_pair(word[0], best, new_id)
+        self.merges[best] = new_id
+        self.vocab[new_id] = self.vocab[best[0]] + self.vocab[best[1]]
+
+        if verbose:
+            print(&quot;merge %d: %r + %r -&gt; %r  (seen %d times)&quot; % (
+                step + 1, self.piece(best[0]), self.piece(best[1]), self.piece(new_id), pair_counts[best]))</pre></div>
+<ol>
+<li><code>Counter(self.splitter.findall(text))</code>: step 0, then count each different chunk. On our 22 MB of stories this turns 5,411,109 chunks into 13,119 different ones (section 6b).</li>
+<li><code>list(chunk.encode("utf-8"))</code>: step 1, every chunk as byte values. <code>words</code> is a list of [byte list, count] pairs.</li>
+<li>The <code>for step in range(vocab_size - 256)</code> loop runs once per merge. Asking for a list of 1,000 means 744 merges.</li>
+<li>Count all pairs with <code>count_pairs</code>, weighted by each chunk's count.</li>
+<li><code>max(..., key=lambda p: (pair_counts[p], -p[0], -p[1]))</code> picks the most frequent pair. The key is a tuple: Python compares the count first, and only if two counts are equal does it look at the ids, so ties are always settled the same way and training is repeatable.</li>
+<li>The new piece gets the next free id, <code>256 + step</code>, so ids also record the learning order.</li>
+<li>Glue the winner in every chunk with <code>merge_pair</code>, store the rule in <code>merges</code> and the new piece's bytes in <code>vocab</code> (the two old pieces' bytes joined).</li>
+<li>If no pairs are left (every chunk is already one piece) the loop stops early with <code>break</code>.</li></ol>
+<p class=note>Speed: this simple version recounts every pair on every round. On a laptop it learned 8,000 merges from 22 MB in a few minutes. Real libraries (Hugging Face tokenizers, SentencePiece) only update the counts that changed, which is far faster but harder to read.</p>
+<h4>add_special_tokens</h4><div class=code><pre>def add_special_tokens(self, names):
+    &quot;&quot;&quot;Give hand-made marker tokens the next free ids. Call this after train().&quot;&quot;&quot;
+    for name in names:
+        if name not in self.special:
+            self.special[name] = len(self.vocab) + len(self.special)</pre></div>
+<p>Special tokens get the next free ids after the learned list. They are never produced by merging; <code>encode</code> looks for them by name.</p>
+<h2 id="encoding-decoding-saving">24. Encoding, decoding, saving</h2>
+<h4>_encode_chunk: replay the merges, earliest first</h4><div class=code><pre>def _encode_chunk(self, chunk_bytes):
+    &quot;&quot;&quot;Turn one chunk&#x27;s bytes into ids by replaying the learned merges, earliest first.&quot;&quot;&quot;
+    ids = list(chunk_bytes)
+    while len(ids) &gt;= 2:
+        # Of all neighbouring pairs, find the one whose merge was learned earliest
+        # (smallest new id). Pairs with no merge get &quot;infinity&quot;, so they never win.
+        pair = min(zip(ids, ids[1:]), key=lambda p: self.merges.get(p, float(&quot;inf&quot;)))
+        if pair not in self.merges:
+            break  # no neighbouring pair has a rule: we are done
+        ids = merge_pair(ids, pair, self.merges[pair])
+    return ids</pre></div>
+<p>Exactly section 10. Look at every neighbouring pair; among those that have a rule, take the one learned earliest (smallest new id) and glue it everywhere; repeat until no pair has a rule. <code>self.merges.get(p, float("inf"))</code> means "the new id of this pair's rule, or infinity if there is no rule", so pairs without a rule can never be the smallest. This is how GPT-4o turns "hello" into he, ll, hell, hello in section 10.</p>
+<h4>encode: the whole text</h4><div class=code><pre>def encode(self, text, allow_special=True):
+    &quot;&quot;&quot;Text -&gt; list of ids.&quot;&quot;&quot;
+    ids = []
+    if allow_special and self.special:
+        # Cut the text around the special tokens first, so &quot;&lt;|endoftext|&gt;&quot; becomes one id
+        # instead of being spelled out as &lt; | e n d ...
+        names = sorted(self.special, key=len, reverse=True)
+        parts = regex.split(&quot;(&quot; + &quot;|&quot;.join(regex.escape(n) for n in names) + &quot;)&quot;, text)
+    else:
+        parts = [text]
+    for part in parts:
+        if part in self.special and allow_special:
+            ids.append(self.special[part])
+            continue
+        for chunk in self.splitter.findall(part):
+            ids.extend(self._encode_chunk(chunk.encode(&quot;utf-8&quot;)))
+    return ids</pre></div>
+<p>First the text is cut around special tokens, so <code>&lt;|endoftext|&gt;</code> becomes its one id instead of 13 single characters. Then each normal part goes through step 0 and <code>_encode_chunk</code>. <code>allow_special=False</code> treats the markers as plain text, which matters when the text comes from users (it stops someone typing a marker that the model would trust).</p>
+<h4>decode: ids back to text</h4><div class=code><pre>def decode(self, ids):
+    &quot;&quot;&quot;List of ids -&gt; text. Join every piece&#x27;s bytes, then read them as UTF-8.&quot;&quot;&quot;
+    special_by_id = {i: name for name, i in self.special.items()}
+    data = b&quot;&quot;.join(special_by_id[i].encode(&quot;utf-8&quot;) if i in special_by_id else self.vocab[i] for i in ids)
+    # errors=&quot;replace&quot;: if the ids end in the middle of a character (half an emoji),
+    # show the replacement mark instead of crashing.
+    return data.decode(&quot;utf-8&quot;, errors=&quot;replace&quot;)</pre></div>
+<p>Join the bytes of every piece, then read them as UTF-8 (section 2b). <code>errors="replace"</code> handles the half-character case from section 11: if the ids stop in the middle of a character, a replacement mark is shown instead of a crash.</p>
+<h4>save and load</h4><div class=code><pre>def save(self, path):
+    &quot;&quot;&quot;Write everything needed to rebuild this tokenizer to a JSON file.&quot;&quot;&quot;
+    data = {
+        &quot;pattern&quot;: self.pattern,
+        &quot;merges&quot;: [[a, b] for (a, b) in self.merges],   # in learned order
+        &quot;special&quot;: self.special,
+    }
+    with open(path, &quot;w&quot;, encoding=&quot;utf-8&quot;) as f:
+        json.dump(data, f, indent=1)</pre></div><div class=code><pre>def load(cls, path):
+    &quot;&quot;&quot;Read a file written by save() and rebuild the tokenizer.&quot;&quot;&quot;
+    with open(path, encoding=&quot;utf-8&quot;) as f:
+        data = json.load(f)
+    tok = cls(data[&quot;pattern&quot;])
+    for step, (a, b) in enumerate(data[&quot;merges&quot;]):
+        new_id = 256 + step
+        tok.merges[(a, b)] = new_id
+        tok.vocab[new_id] = tok.vocab[a] + tok.vocab[b]
+    tok.special = data[&quot;special&quot;]
+    return tok</pre></div>
+<p>Only the pattern, the merge list in order and the special tokens are saved; the list of pieces is rebuilt from the merges on load, exactly as during training. <code>@classmethod</code> means you call it on the class itself: <code>tok = Tokenizer.load("my_tokenizer.json")</code>.</p>
+<h2 id="run-it-test-it-change-it">25. Run it, test it, change it</h2>
+<h4>Run it</h4>
+<pre>pip install regex
+python minibpe.py                    # small built-in sample, list size 300
+python minibpe.py my_text.txt 1000   # your own text file, list size 1000</pre>
+<p>Real output of the first command (start and end):</p><div class=code><pre>$ python minibpe.py
+merge 1: &#x27; &#x27; + &#x27;t&#x27; -&gt; &#x27; t&#x27;  (seen 240 times)
+merge 2: &#x27;h&#x27; + &#x27;e&#x27; -&gt; &#x27;he&#x27;  (seen 220 times)
+merge 3: &#x27; t&#x27; + &#x27;he&#x27; -&gt; &#x27; the&#x27;  (seen 180 times)
+merge 4: &#x27; &#x27; + &#x27;s&#x27; -&gt; &#x27; s&#x27;  (seen 140 times)
+merge 5: &#x27; &#x27; + &#x27;a&#x27; -&gt; &#x27; a&#x27;  (seen 120 times)
+merge 6: &#x27; &#x27; + &#x27;c&#x27; -&gt; &#x27; c&#x27;  (seen 100 times)
+merge 7: &#x27; &#x27; + &#x27;d&#x27; -&gt; &#x27; d&#x27;  (seen 100 times)
+merge 8: &#x27;a&#x27; + &#x27;t&#x27; -&gt; &#x27;at&#x27;  (seen 100 times)
+merge 9: &#x27; c&#x27; + &#x27;at&#x27; -&gt; &#x27; cat&#x27;  (seen 100 times)
+merge 10: &#x27;a&#x27; + &#x27;y&#x27; -&gt; &#x27;ay&#x27;  (seen 60 times)
+...
+
+learned 44 merges, list size 300 (+1 special), saved to my_tokenizer.json
+
+&#x27;Hello! The cat sat in the sun.&#x27;
+  ids:    [291, 33, 296, 264, 259, 263, 290, 258, 285, 46]
+  pieces: Hello | ! |  The |  cat |  s | at |  in |  the |  sun | .
+
+&#x27;hello HELLO&#x27;
+  ids:    [257, 288, 32, 72, 69, 76, 76, 79]
+  pieces: he | llo |   | H | E | L | L | O
+
+&#x27;₹ 🙂&lt;|endoftext|&gt;&#x27;
+  ids:    [226, 130, 185, 32, 240, 159, 153, 130, 300]
+  pieces: &lt;bytes 226&gt; | &lt;bytes 130&gt; | &lt;bytes 185&gt; |   | &lt;bytes 240&gt; | &lt;bytes 159&gt; | &lt;bytes 153&gt; | &lt;bytes 130&gt; | &lt;|endoftext|&gt;
+
+decode(encode(text)) gave back the exact text every time.
+</pre></div>
+<p>Notice the same story as the hello puzzle: on this tiny sample <code>Hello</code> (in the text) became one piece, while <code>hello</code> is split and <code>HELLO</code> stays as single letters, and ₹ and 🙂 fall back to their bytes because the sample never contained them. The special token stays one id.</p>
+<h4>Use it from your own code</h4>
+<pre>from minibpe import Tokenizer
+
+tok = Tokenizer()
+tok.train(open("my_text.txt", encoding="utf-8").read(), 2000)
+ids = tok.encode("Hello world")
+print(ids, [tok.piece(i) for i in ids])
+print(tok.decode(ids))
+tok.save("my_tokenizer.json")</pre>
+<h4>Tests</h4>
+<p><code>test_minibpe.py</code> (next to the code) checks the helpers, that <code>decode(encode(text))</code> gives back the exact text for awkward inputs (empty text, new lines, ₹, emoji, Hindi, Chinese, code, special tokens), and that save then load behaves identically. With <code>--full</code> it retrains on the same 22 MB of TinyStories used on this page and checks it gets <b>the identical 8,000 merges</b>, the identical hello splits of section 9 and the identical 1,270,131 tokens on the unseen stories of section 8. All checks pass.</p>
+<h4>Things to try</h4><ul>
+<li>Train on the same text with list sizes 300, 1,000 and 5,000 and compare how many ids a paragraph needs (section 8's curve).</li>
+<li>Train on text in another language, or on code, and see which pieces it learns first.</li>
+<li>Change step 0: replace <code>GPT2_SPLIT_PATTERN</code> with <code>r" ?\S+|\s+"</code> (split at spaces only) and look for pieces like <code>day.</code> (section 6a).</li>
+<li>Compare with a real tokenizer: <code>pip install tiktoken</code>, then <code>tiktoken.get_encoding("o200k_base").encode("hello")</code> gives <code>[24912]</code>, GPT-4o's id from section 1.</li></ul>
+<h2 id="glossary">Glossary</h2><dl>
+<dt>Byte</dt><dd>A number from 0 to 255. Text files store characters as 1 to 4 bytes each (UTF-8).</dd>
+<dt>Token</dt><dd>One piece of text from the tokenizer's list: a byte, part of a word, a whole word, or a special marker.</dd>
+<dt>Token ID</dt><dd>The position number of a token in the list. This number is what the model receives.</dd>
+<dt>Vocabulary</dt><dd>The full, fixed list of tokens (GPT-4o: 200,019 entries).</dd>
+<dt>Tokenizer</dt><dd>The program that cuts text into tokens and turns them into IDs, and back.</dd>
+<dt>Step 0 / pre-tokenization</dt><dd>The hand-written rule that cuts text into word-sized chunks before merging.</dd>
+<dt>Merge (rule)</dt><dd>"Glue piece A and piece B into AB". Training produces an ordered list of these.</dd>
+<dt>BPE</dt><dd>Byte Pair Encoding: build the list by repeatedly gluing the most frequent neighbouring pair.</dd>
+<dt>Training a tokenizer</dt><dd>Running BPE on example text to produce the list. Counting only; no neural network.</dd>
+<dt>Encoding / decoding</dt><dd>Text &rarr; IDs / IDs &rarr; text.</dd>
+<dt>Embedding table</dt><dd>Inside the model: one row of learned numbers per token ID.</dd>
+<dt>Special token</dt><dd>A hand-added marker such as &lt;|endoftext|&gt; that normal text cannot produce.</dd></dl>
+<h2 id="sources">Sources</h2><ul class="sources">
+<li>Gage, A New Algorithm for Data Compression, C Users Journal 12(2) (1994): the original byte pair encoding</li>
+<li>Sennrich, Haddow, Birch, <a href="https://arxiv.org/abs/1508.07909">Neural Machine Translation of Rare Words with Subword Units</a> (2016): BPE for word pieces, the merge loop, the frequency-weighted dictionary</li>
+<li>Radford et al., <a href="https://cdn.openai.com/better-language-models/language_models_are_unsupervised_multitask_learners.pdf">Language Models are Unsupervised Multitask Learners</a> (GPT-2, 2019): byte-level BPE, 256 base symbols, the space rule</li>
+<li>Kudo &amp; Richardson, <a href="https://arxiv.org/abs/1808.06226">SentencePiece</a> (2018) and Kudo, <a href="https://arxiv.org/abs/1804.10959">Subword Regularization</a> (Unigram, 2018)</li>
+<li>Devlin et al., <a href="https://arxiv.org/abs/1810.04805">BERT</a> (2018): WordPiece with a 30,000-token list</li>
+<li>Gemma Team, <a href="https://arxiv.org/abs/2503.19786">Gemma 3 Technical Report</a> (2025): SentencePiece tokenizer, split digits, byte-level encodings, 262k entries</li>
+<li>Petrov et al., <a href="https://arxiv.org/abs/2305.15425">Language Model Tokenizers Introduce Unfairness Between Languages</a> (2023)</li>
+<li>Singh &amp; Strouse, <a href="https://arxiv.org/abs/2402.14903">Tokenization counts: the impact of tokenization on arithmetic in frontier LLMs</a> (2024)</li>
+<li>Land &amp; Bartolo, <a href="https://arxiv.org/abs/2405.05417">Fishing for Magikarp</a> (2024): under-trained (glitch) tokens</li>
+<li>OpenAI <a href="https://github.com/openai/tiktoken">tiktoken</a> 0.14: the gpt2, cl100k_base and o200k_base files (sizes, step-0 patterns, special tokens, model list, ranks as merge priority)</li>
+<li>Hugging Face tokenizer files of Qwen2.5-1.5B, Gemma 3 270M and Llama 3.2 1B; weights and config of SmolLM-135M</li>
+<li>Training text: <a href="https://huggingface.co/datasets/roneneldan/TinyStories">TinyStories</a> (the validation split for training, the first 5 MB of the train split as unseen text)</li>
+</ul>
+<div class="endcard"><h3>Video coming soon</h3><p>A full video and a Short on this topic are on the way. Subscribe to get them when they're out.</p>
+<div class="actions"><a class="btn ytbtn" data-watch="tokenizer-long" target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.6 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg>Watch on YouTube</a>
+<a class="btn" data-channel target="_blank" rel="noopener">Subscribe</a>
+<a class="btn" href="https://www.linkedin.com/in/rohit-kumar-singh-621818a9/" target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><path d="M20.4 20.5h-3.6v-5.6c0-1.3 0-3-1.8-3s-2.1 1.4-2.1 2.9v5.7H9.3V9h3.4v1.6h.1c.5-.9 1.6-1.8 3.4-1.8 3.6 0 4.3 2.4 4.3 5.5v6.2zM5.3 7.4a2.1 2.1 0 1 1 0-4.1 2.1 2.1 0 0 1 0 4.1zM7.1 20.5H3.5V9h3.6v11.5zM22.2 0H1.8C.8 0 0 .8 0 1.7v20.6c0 .9.8 1.7 1.8 1.7h20.4c1 0 1.8-.8 1.8-1.7V1.7C24 .8 23.2 0 22.2 0z"/></svg>Follow on LinkedIn</a></div></div>
+<a class="next" href="../vision/"><span>Next explainer</span><b>How LLMs see images →</b></a>
+</article>
+</div>
+<script>document.querySelectorAll('.copy').forEach(function(b){b.addEventListener('click',function(){
+var t=document.getElementById(b.dataset.for).textContent;
+function done(){b.textContent='Copied';setTimeout(function(){b.textContent='Copy'},1500)}
+if(navigator.clipboard){navigator.clipboard.writeText(t).then(done,function(){fallback()})}else{fallback()}
+function fallback(){var a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();try{document.execCommand('copy');done()}catch(e){}document.body.removeChild(a)}
+})});</script>
+<footer class="site"><div class="in"><span>© 2026 Rohit Kumar Singh</span>
+<span><a href="https://www.linkedin.com/in/rohit-kumar-singh-621818a9/" target="_blank" rel="noopener">LinkedIn</a> · <a href="https://github.com/gotherohit/AIML" target="_blank" rel="noopener">GitHub</a> · <a href="mailto:rohitkrsingh2000@gmail.com">Email</a></span>
+<p class="ai-note"><b>About AI assistance:</b> the articles and code on this site are developed with the help of AI tools. Explanations are refined through in-depth conversations with AI, and code is written with AI assistance. Experiments are run for real, results come from that code, and claims are checked against the cited sources.</p></div></footer>
+<script src="../../assets/site.js"></script>
+</body></html>

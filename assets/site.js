@@ -6,6 +6,8 @@ const VIDEOS = {
   "swa-short":  "https://youtube.com/shorts/akXuRjRXxZk",               // Sliding window attention Short
   "vision-long":  "https://youtu.be/15drILbSCVg",               // How LLMs see images (long video)
   "vision-short": "https://youtube.com/shorts/UvJ45e8awmI",       // To an AI, this cat is 1,015 tokens
+  "tokenizer-long":  "",                                          // How a tokenizer works (long video): coming soon
+  "tokenizer-short": "",                                          // Tokenizer Short: coming soon
 };
 // ------------------------------------------------------------------------------------------
 
@@ -21,6 +23,11 @@ document.querySelectorAll(".yt[data-video]").forEach((el) => {
   const label = el.dataset.label || "Video";
   const cover = el.dataset.cover || (id ? `https://i.ytimg.com/vi/${id}/hqdefault.jpg` : "");
   if (cover) el.style.backgroundImage = `url("${cover}")`;
+  if (!id && el.hasAttribute("data-soon")) {   // announced but not published yet: show a "coming soon" slot
+    el.classList.add("pending");
+    el.innerHTML = `<div class="soon"><span class="label">${label} · coming soon</span>${el.dataset.title}</div>`;
+    return;
+  }
   if (!id) {                       // no link yet: hide the slot
     const box = el.parentElement;
     el.remove();
