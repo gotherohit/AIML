@@ -14,6 +14,8 @@ const VIDEOS = {
   "kv-short":    "https://youtube.com/shorts/qnKMisC82ns",       // Why cached tokens cost 95% less
   "gguf-short":  "https://youtube.com/shorts/mGplRXdsJO4",       // 1 file, 1 whole AI model: how GGUF works
   "chat-short":  "https://youtube.com/shorts/MR_0fXvwU3A",       // What your AI actually sees when you chat
+  "moe-short":   "https://youtube.com/shorts/4JVQ8tE2xX8",       // Mistral's "le Chonk" uses 5% of itself per token
+  "embed-short": "https://youtube.com/shorts/gCkOUIoeHTQ",       // EmbeddingGemma 2 explained
 };
 // ------------------------------------------------------------------------------------------
 

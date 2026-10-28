@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Embeddings: the AI that finds instead of writes (EmbeddingGemma 2)</title>
+<meta name="description" content="A short article on the high-level idea of embeddings: 768 numbers per item, dot product and cosine, one shared space for text, photos and video, and a real run of EmbeddingGemma 2.">
+<link rel="canonical" href="https://gotherohit.github.io/AIML/explainers/embeddings/">
+<meta property="og:type" content="article"><meta property="og:title" content="Embeddings: the AI that finds instead of writes (EmbeddingGemma 2)">
+<meta property="og:description" content="A short article on the high-level idea of embeddings: 768 numbers per item, dot product and cosine, one shared space for text, photos and video, and a real run of EmbeddingGemma 2."><meta property="og:url" content="https://gotherohit.github.io/AIML/explainers/embeddings/">
+<meta property="og:image" content="https://gotherohit.github.io/AIML/images/covers/embeddings.jpg"><meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x2='1' y2='1'%3E%3Cstop stop-color='%2335d6c0'/%3E%3Cstop offset='1' stop-color='%23ff6a2b'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../assets/site.css"><style>:root{--accent:#f5a524;--accent2:#5aaeff}</style>
+</head><body>
+<header class="topbar"><div class="in">
+<a class="brand" href="../../"><span class="mark">RK</span>Rohit Kumar Singh</a>
+<nav><a class="txt" href="../../#explainers">Explainers</a><a class="txt" href="../../#projects">Projects</a><a class="txt" href="../../#about">About</a>
+<a class="icon" data-channel target="_blank" rel="noopener" aria-label="YouTube"><svg viewBox="0 0 24 24"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.6 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg></a>
+<a class="icon" href="https://www.linkedin.com/in/rohit-kumar-singh-621818a9/" target="_blank" rel="noopener" aria-label="LinkedIn"><svg viewBox="0 0 24 24"><path d="M20.4 20.5h-3.6v-5.6c0-1.3 0-3-1.8-3s-2.1 1.4-2.1 2.9v5.7H9.3V9h3.4v1.6h.1c.5-.9 1.6-1.8 3.4-1.8 3.6 0 4.3 2.4 4.3 5.5v6.2zM5.3 7.4a2.1 2.1 0 1 1 0-4.1 2.1 2.1 0 0 1 0 4.1zM7.1 20.5H3.5V9h3.6v11.5zM22.2 0H1.8C.8 0 0 .8 0 1.7v20.6c0 .9.8 1.7 1.8 1.7h20.4c1 0 1.8-.8 1.8-1.7V1.7C24 .8 23.2 0 22.2 0z"/></svg></a>
+<a class="icon" href="https://github.com/gotherohit/AIML" target="_blank" rel="noopener" aria-label="GitHub"><svg viewBox="0 0 24 24"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.3-3.1-.2-.4-.6-1.6 0-3.2 0 0 1-.3 3.4 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.2.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.5.4.9 1.1.9 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"/></svg></a></nav>
+</div></header>
+<div class="article-head">
+<div class="crumbs"><a href="../../#explainers">Explainers</a> /</div>
+<h1>Embeddings: the AI that finds instead of writes (EmbeddingGemma 2)</h1>
+<p class="dek">EmbeddingGemma 2 can't write a word: it turns sentences, photos and clips into lists of numbers that point the same way when they mean the same thing. This short article explains the idea, with a real run.</p>
+<div class="tags" style="margin-bottom:16px"><span class="tag">Embeddings</span><span class="tag">Search</span><span class="tag">Short article</span></div>
+<div class="byline"><span>By <b>Rohit Kumar Singh</b></span><span>October 2026</span><span>3 min read</span></div>
+</div>
+<div class="videos"><div class="yt vertical" data-video="embed-short" data-label="Short" data-title="EmbeddingGemma 2: the AI that finds instead of writes" data-cover="../../images/covers/embeddings-short.jpg"></div></div>
+<div class="layout">
+<details class="toc"><summary>Contents</summary><ol><li><a href="#a-model-that-can-t-write-a-word">A model that can&#x27;t write a word</a></li><li><a href="#what-an-embedding-is">What an embedding is</a></li><li><a href="#i-ran-it-one-map-for-text-photos-and-video">I ran it: one map for text, photos and video</a></li><li><a href="#what-s-new-in-version-2">What&#x27;s new in version 2</a></li><li><a href="#it-fits-on-a-phone">It fits on a phone</a></li><li><a href="#what-it-s-for">What it&#x27;s for</a></li></ol></details>
+<article class="prose">
+<div class="box"><b>Short article.</b> This page covers the high-level idea, the same ground as the Short. Embeddings is a big topic; this is the core of it, with every number checked against its source.</div>
+<div class="box key"><b>In one line:</b> an embedding model doesn't write; it turns anything (a sentence, a photo, a clip) into a
+list of numbers, placed so that similar meanings point the same way. That makes it a search engine's core, not a chatbot.</div>
+
+<h2 id="a-model-that-can-t-write-a-word">A model that can't write a word</h2>
+<p>On 6 October 2026 Google DeepMind released <b>EmbeddingGemma 2</b>, open weights under Apache 2.0. Ask it for a poem and it
+replies with a list of numbers. That's not a bug: it's an <b>embedding model</b>, and those numbers are more useful than they look.</p>
+
+<h2 id="what-an-embedding-is">What an embedding is</h2>
+<p>An embedding model takes something, like a sentence, and turns it into a list of <b>768 numbers</b>. Think of that list as a
+location: an arrow pointing to a spot on a map of meaning. A sentence with a similar meaning points almost the same way.</p>
+<p>How close are two arrows? Multiply the matching numbers of the two lists (1st with 1st, 2nd with 2nd, all 768) and add
+everything up: the <b>dot product</b>. This model scales every list it outputs to length 1, and for length-1 lists the dot
+product is the <b>cosine of the angle</b> between the arrows. Smaller angle, higher score. From my own run:</p>
+<div class="tbl"><table>
+<tr><th>Pair</th><th>Score</th><th>Angle</th></tr>
+<tr class="k"><td>"Happy dog on the grass" vs a sentence about a puppy fetching sticks</td><td>0.95</td><td>about 18°</td></tr>
+<tr><td>"Happy dog on the grass" vs a sentence about tax returns</td><td>0.82</td><td>about 35°</td></tr>
+</table></div>
+<div class="box warn"><b>Read the ranking, not the number.</b> All scores from this model are fairly high: even unrelated things
+scored 0.67 to 0.84 in my test. 0.82 does not mean "82% similar". What matters is which item scores highest, and by how much.</div>
+<p>So this is not a writer like Gemini or GPT: text in, new text out. It is closer to a "finder" (my nickname, not an official
+term). Google calls it an embedding model, used for semantic search and retrieval; inside a chatbot that looks things up (RAG),
+it is the retriever.</p>
+
+<h2 id="i-ran-it-one-map-for-text-photos-and-video">I ran it: one map for text, photos and video</h2>
+<p>I gave it sentences, photos and short video clips about dogs, food, cars and the sea, on a laptop CPU with no API. Each one
+became 768 numbers. Squashed down to 3 numbers so they can be plotted (a PCA projection), the items gathered by <b>topic</b>:
+dogs in one region, food, cars and the sea in others, with no labels given.</p>
+<ul>
+<li>The closest sentence-and-photo pair was a pasta sentence and a pasta photo: <b>0.89</b>.</li>
+<li>For the dog sentence, the 2 dog photos scored highest (0.87 and 0.85) and the 2 video clips lowest (0.76 and 0.75). The gaps
+are small.</li>
+<li>Searching for "waves on a beach", the 2 beach photos came out on top (0.73 and 0.72, then 0.63).</li>
+</ul>
+<div class="box"><b>How to read the map.</b> A 3D projection of 768 numbers loses detail, so the scores are the real measurement,
+not the picture. Text, photos and clips also sit in their own regions (a sentence is always closer to other sentences than to any
+photo), so for the map each group was shifted to a common centre to show topic rather than file type. It's a small illustration
+with hand-picked samples, not a benchmark.</div>
+
+<h2 id="what-s-new-in-version-2">What's new in version 2</h2>
+<p>Version 1 only understood text. Version 2 takes <b>text, code, images, video and audio</b> and puts them all in one shared
+space, so a sentence can be compared with a photo. It is built from 3 parts:</p>
+<div class="tbl"><table>
+<tr><th>Part</th><th>Parameters</th></tr>
+<tr><td>Text model</td><td>270 million</td></tr>
+<tr><td>Vision encoder</td><td>170 million</td></tr>
+<tr><td>Audio encoder</td><td>300 million</td></tr>
+<tr class="k"><td>Total</td><td>740 million</td></tr>
+</table></div>
+<p>You can load only the parts you need. Its 8K context fits up to 29 images, 58 video frames or about 5.5 minutes of audio in
+one input.</p>
+
+<h2 id="it-fits-on-a-phone">It fits on a phone</h2>
+<p>Google's figures, quantized, on a Pixel 11 Pro: about <b>567 MB</b> of memory for the full model, about <b>191 MB</b> for text
+only. You can also keep fewer numbers: cut each list from 768 to 512, 256 or 128 (so-called Matryoshka embeddings), for up to
+6× less storage. The catch, per the model card: quality barely changes at 256, but at 128 images and video get noticeably worse.
+(A list cut to 128 is also no longer length 1, so re-normalise it before comparing scores.)</p>
+
+<h2 id="what-it-s-for">What it's for</h2>
+<p>Search: your own photos and videos, or finding the right document for a chatbot to read. It's on Hugging Face and Kaggle and
+works with Ollama.</p>
+
+<h2 id="sources">Sources</h2><ul class="sources">
+<li>Google, <a href="https://blog.google/innovation-and-ai/technology/developers-tools/embeddinggemma-2/">EmbeddingGemma 2 announcement</a> (Sahil Dua and Henrique Schechter Vera, 6 October 2026): modalities, 740M parameters, 8K context, Pixel 11 Pro memory, up to 6× storage reduction, availability</li>
+<li>Google AI for Developers, <a href="https://ai.google.dev/gemma/docs/embeddinggemma/model_card_2">EmbeddingGemma 2 model card</a>: 768-dimension output, architecture, truncation options and their quality</li>
+<li>Hugging Face, <a href="https://huggingface.co/google/embeddinggemma-2">google/embeddinggemma-2</a>: weights, selective encoder loading, the normalise step in the pipeline</li>
+<li>Experiment: <code>google/embeddinggemma-2</code> on a laptop CPU, 19 hand-picked samples (sentences written for the test; photos and clips from Wikimedia Commons, public domain / CC0)</li>
+</ul>
+<div class="endcard"><h3>Prefer watching?</h3><p>The Short shows the same run, with the 3D map, in under 3 minutes.</p>
+<div class="actions"><a class="btn ytbtn" data-watch="embed-short" target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.6 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg>Watch on YouTube</a>
+<a class="btn" data-channel target="_blank" rel="noopener">Subscribe</a>
+<a class="btn" href="https://www.linkedin.com/in/rohit-kumar-singh-621818a9/" target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><path d="M20.4 20.5h-3.6v-5.6c0-1.3 0-3-1.8-3s-2.1 1.4-2.1 2.9v5.7H9.3V9h3.4v1.6h.1c.5-.9 1.6-1.8 3.4-1.8 3.6 0 4.3 2.4 4.3 5.5v6.2zM5.3 7.4a2.1 2.1 0 1 1 0-4.1 2.1 2.1 0 0 1 0 4.1zM7.1 20.5H3.5V9h3.6v11.5zM22.2 0H1.8C.8 0 0 .8 0 1.7v20.6c0 .9.8 1.7 1.8 1.7h20.4c1 0 1.8-.8 1.8-1.7V1.7C24 .8 23.2 0 22.2 0z"/></svg>Follow on LinkedIn</a></div></div>
+<a class="next" href="../mixture-of-experts/"><span>Next explainer</span><b>Mixture of experts →</b></a>
+</article>
+</div>
+
+<footer class="site"><div class="in"><span>© 2026 Rohit Kumar Singh</span>
+<span><a href="https://www.linkedin.com/in/rohit-kumar-singh-621818a9/" target="_blank" rel="noopener">LinkedIn</a> · <a href="https://github.com/gotherohit/AIML" target="_blank" rel="noopener">GitHub</a> · <a href="mailto:rohitkrsingh2000@gmail.com">Email</a></span>
+<p class="ai-note"><b>About AI assistance:</b> the articles and code on this site are developed with the help of AI tools. Explanations are refined through in-depth conversations with AI, and code is written with AI assistance. Experiments are run for real, results come from that code, and claims are checked against the cited sources.</p></div></footer>
+<script src="../../assets/site.js"></script>
+</body></html>
