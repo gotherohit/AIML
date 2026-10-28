@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Quantization explained: how a 3.56 GB model fits in 1.12 GB</title>
+<meta name="description" content="What a bit really is, how 4-bit quantization stores a weight as a label plus a shared start and gap, why real formats use blocks of 32, and a test of 4 precisions of the same model on a 2018 laptop.">
+<link rel="canonical" href="https://gotherohit.github.io/AIML/explainers/quantization/">
+<meta property="og:type" content="article"><meta property="og:title" content="Quantization explained: how a 3.56 GB model fits in 1.12 GB">
+<meta property="og:description" content="What a bit really is, how 4-bit quantization stores a weight as a label plus a shared start and gap, why real formats use blocks of 32, and a test of 4 precisions of the same model on a 2018 laptop."><meta property="og:url" content="https://gotherohit.github.io/AIML/explainers/quantization/">
+<meta property="og:image" content="https://gotherohit.github.io/AIML/images/covers/quantization.jpg"><meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x2='1' y2='1'%3E%3Cstop stop-color='%2335d6c0'/%3E%3Cstop offset='1' stop-color='%23ff6a2b'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../assets/site.css"><style>:root{--accent:#e6ff3a;--accent2:#ff9f1c}</style>
+</head><body>
+<header class="topbar"><div class="in">
+<a class="brand" href="../../"><span class="mark">RK</span>Rohit Kumar Singh</a>
+<nav><a class="txt" href="../../#explainers">Explainers</a><a class="txt" href="../../#projects">Projects</a><a class="txt" href="../../#about">About</a>
+<a class="icon" data-channel target="_blank" rel="noopener" aria-label="YouTube"><svg viewBox="0 0 24 24"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.6 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg></a>
+<a class="icon" href="https://www.linkedin.com/in/rohit-kumar-singh-621818a9/" target="_blank" rel="noopener" aria-label="LinkedIn"><svg viewBox="0 0 24 24"><path d="M20.4 20.5h-3.6v-5.6c0-1.3 0-3-1.8-3s-2.1 1.4-2.1 2.9v5.7H9.3V9h3.4v1.6h.1c.5-.9 1.6-1.8 3.4-1.8 3.6 0 4.3 2.4 4.3 5.5v6.2zM5.3 7.4a2.1 2.1 0 1 1 0-4.1 2.1 2.1 0 0 1 0 4.1zM7.1 20.5H3.5V9h3.6v11.5zM22.2 0H1.8C.8 0 0 .8 0 1.7v20.6c0 .9.8 1.7 1.8 1.7h20.4c1 0 1.8-.8 1.8-1.7V1.7C24 .8 23.2 0 22.2 0z"/></svg></a>
+<a class="icon" href="https://github.com/gotherohit/AIML" target="_blank" rel="noopener" aria-label="GitHub"><svg viewBox="0 0 24 24"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.3-3.1-.2-.4-.6-1.6 0-3.2 0 0 1-.3 3.4 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.2.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.5.4.9 1.1.9 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"/></svg></a></nav>
+</div></header>
+<div class="article-head">
+<div class="crumbs"><a href="../../#explainers">Explainers</a> /</div>
+<h1>Quantization explained: how a 3.56 GB model fits in 1.12 GB</h1>
+<p class="dek">A model is numbers times bits. Quantization keeps every number but stores it with fewer bits. This is how it works, worked through on real weights, and what it cost when I tested 4 precisions of the same model on a 2018 laptop.</p>
+<div class="tags" style="margin-bottom:16px"><span class="tag">Quantization</span><span class="tag">llama.cpp</span><span class="tag">Local AI</span><span class="tag">Real experiment</span></div>
+<div class="byline"><span>By <b>Rohit Kumar Singh</b></span><span>October 2026</span><span>9 min read</span></div>
+</div>
+<div class="videos two">
+<div class="yt" data-video="quant-long" data-label="Full video · 10 min" data-title="Quantization explained: how a 3.56 GB model fits in 1.12 GB" data-cover="../../images/covers/quantization.jpg"></div>
+<div class="yt vertical" data-video="quant-short" data-label="Short" data-title="Quantization in 6 steps" data-cover="../../images/covers/quantization-short.jpg"></div>
+</div>
+<div class="layout">
+<details class="toc"><summary>Contents</summary><ol><li><a href="#a-laptop-from-2018">A laptop from 2018</a></li><li><a href="#a-model-is-a-list-of-numbers">A model is a list of numbers</a></li><li><a href="#size-is-numbers-times-bits">Size is numbers times bits</a></li><li><a href="#what-a-bit-really-is">What a bit really is</a></li><li><a href="#quantization-on-8-real-weights">Quantization on 8 real weights</a></li><li><a href="#why-one-ruler-for-a-whole-layer-fails">Why one ruler for a whole layer fails</a></li><li><a href="#how-q4-k-m-really-stores-weights">How Q4_K_M really stores weights</a></li><li><a href="#what-it-does-to-file-size">What it does to file size</a></li><li><a href="#the-test-same-model-4-precisions">The test: same model, 4 precisions</a></li><li><a href="#what-you-give-up">What you give up</a></li><li><a href="#open-weights-where-the-numbers-come-from">Open weights: where the numbers come from</a></li><li><a href="#should-you-run-ai-on-your-laptop">Should you run AI on your laptop?</a></li><li><a href="#the-whole-idea-in-one-line">The whole idea in one line</a></li></ol></details>
+<article class="prose">
+
+<div class="box key"><b>In one line:</b> a model is <b>numbers × bits</b>. You can't remove numbers without changing the model,
+but you can store each one with fewer bits. That is quantization, and it is why a 2018 laptop with 16 GB of memory can run a
+real language model with no cloud and no graphics card.</div>
+
+<h2 id="a-laptop-from-2018">A laptop from 2018</h2>
+<p>Everything on this page was measured on one ordinary machine: a Dell Inspiron 5584 with an Intel Core i7-8565U (4 cores,
+launched in Q3 2018) and 16 GB of memory. The model runs on the processor only, with the CPU build of llama.cpp (build b11553,
+4 threads), talking to nothing but the laptop itself.</p>
+<p>The model is <b>Qwen2.5-1.5B-Instruct</b>. Asked a question, its 4-bit file streamed the answer at <b>11.0 tokens a
+second</b> (35 tokens). So how does something with 1.78 billion numbers inside run on a machine this ordinary? Two ideas:
+<b>quantization</b>, which this page is mostly about, and <b>open weights</b>, which is what gives you the file in the first place.</p>
+
+<h2 id="a-model-is-a-list-of-numbers">A model is a list of numbers</h2>
+<p>Take away the chat window and a model is one thing: a very long list of numbers called <b>weights</b>. These are the first
+8 numbers of one matrix (<code>blk.0.attn_q.weight</code>) in the 16-bit file, read straight out of it:</p>
+<pre>0.00825  −0.00500  0.00082  0.00157  −0.00228  −0.00020  0.00482  0.00954</pre>
+<p>The whole file holds <b>1,777,088,000</b> of them. When you ask a question, your words become numbers too (for this model,
+"Why is the sky blue?" is the token numbers 10234, 374, 279, 12884, 6303, 30), and those are multiplied through the weights.
+That happens again for every token the model writes, so <b>the whole list has to sit in memory at once</b>. The real problem is size.</p>
+<div class="box"><b>Why 1.78 billion, when the model is called "1.5B"?</b> The model card says 1.54 billion parameters. The
+GGUF file stores the word table twice (once for reading text in, once for writing text out), so it contains 1.78 billion
+numbers. This page counts numbers in the file.</div>
+
+<h2 id="size-is-numbers-times-bits">Size is numbers times bits</h2>
+<p>The size of a model is simple multiplication: how many numbers, times how much space each takes. Weights are normally stored
+with 16 or 32 bits each (Hugging Face's guide calls 32-bit floats "the usual"; llama.cpp describes models as usually
+"distributed in 16-bit format"). At 16 bits, 2 bytes each:</p>
+<div class="tbl"><table>
+<tr><th>Model</th><th>Numbers</th><th>Original size</th><th>Fits in 16 GB?</th></tr>
+<tr><td>Qwen2.5 1.5B (my file)</td><td>1.78 billion</td><td>3.56 GB</td><td>Yes</td></tr>
+<tr><td>Llama 3.1 8B</td><td>8 billion</td><td>32.1 GB</td><td>No</td></tr>
+<tr><td>Llama 3.1 405B</td><td>405 billion</td><td>1,625 GB</td><td>No (about 102 laptops of memory)</td></tr>
+<tr><td>Mistral Large 4</td><td>1.05 trillion</td><td>about 2,100 GB</td><td>No (about 131 laptops)</td></tr>
+</table></div>
+<p class="cap">Llama sizes from llama.cpp's quantize README. Mistral has not published a file size: 1.05 trillion × 2 bytes is my arithmetic.</p>
+<p>The count of numbers is fixed by the model. So the only thing left to shrink is the bits, and to see how, you need to know
+what a bit really is.</p>
+
+<h2 id="what-a-bit-really-is">What a bit really is</h2>
+<p>A bit is a switch: on or off. One bit gives you 2 patterns, and every extra bit doubles that.</p>
+<div class="tbl"><table>
+<tr><th>Bits</th><th>1</th><th>2</th><th>4</th><th>8</th><th>16</th></tr>
+<tr><td>Patterns</td><td>2</td><td>4</td><td>16</td><td>256</td><td>65,536</td></tr>
+</table></div>
+<p>Here is the part that trips people up: 65,536 is <b>not how big a value can get</b>. It is how many <b>different values you
+can choose from</b>. Think of the patterns as blank labels, and you decide what they mean. Write whole numbers on 8 labels and
+you can store 0 to 7. Spread the same 8 labels over decimals and you can store 1.230, 1.231 … 1.237 (an illustration, not the
+layout of any real format).</p>
+<p>So a decimal inside a computer is not "any number you like": it is the <b>nearest label</b>. Picture a ruler whose marks are
+the values you're allowed to store. With 65,536 marks there is almost always a mark right next to your value. With only 16
+marks, your value can sit a long way from the nearest one, and it gets moved there. Storing a value as its nearest mark is
+called <b>quantization</b>.</p>
+
+<h2 id="quantization-on-8-real-weights">Quantization on 8 real weights</h2>
+<p>Take the 8 weights above. They run from −0.00500 up to 0.00954. With 4 bits there are 16 labels, numbered 0 to 15; spread
+them evenly across that range and the gap between two labels is (0.00954 + 0.00500) ÷ 15 = <b>0.00097</b>. Each weight is
+stored as the number of its nearest label, and turned back into a value when the model runs:</p>
+<div class="tbl"><table>
+<tr><th>Weight (16-bit)</th><th>Nearest label</th><th>Stored (4 bits)</th><th>Value the model uses</th><th>Error</th></tr>
+<tr class="k"><td>0.00825</td><td>14</td><td><code>1110</code></td><td>0.00857</td><td>+0.00032</td></tr>
+<tr><td>−0.00500</td><td>0</td><td><code>0000</code></td><td>−0.00500</td><td>0.00000</td></tr>
+<tr><td>0.00082</td><td>6</td><td><code>0110</code></td><td>0.00081</td><td>−0.00001</td></tr>
+<tr><td>0.00157</td><td>7</td><td><code>0111</code></td><td>0.00178</td><td>+0.00021</td></tr>
+<tr><td>−0.00228</td><td>3</td><td><code>0011</code></td><td>−0.00210</td><td>+0.00019</td></tr>
+<tr><td>−0.00020</td><td>5</td><td><code>0101</code></td><td>−0.00016</td><td>+0.00004</td></tr>
+<tr><td>0.00482</td><td>10</td><td><code>1010</code></td><td>0.00469</td><td>−0.00013</td></tr>
+<tr><td>0.00954</td><td>15</td><td><code>1111</code></td><td>0.00954</td><td>0.00000</td></tr>
+</table></div>
+<p>Follow the first row. 0.00825 is (0.00825 + 0.00500) ÷ 0.00097 = 13.7 gaps above the start, which rounds to label
+<b>14</b>, so only the number 14 is stored: 4 bits. When the model runs, 14 is turned back into a value: start at −0.00500,
+add 14 gaps, and you get <b>0.00857</b>. The model now uses 0.00857 instead of 0.00825. That small difference is the
+rounding error.</p>
+<div class="box key"><b>So where did the decimal go?</b> It was never in the 4 bits. It comes back from 2 extra numbers, the
+<b>start</b> and the <b>gap</b>, which are stored once and shared by the whole group. This is the textbook formula from Hugging
+Face's guide, x<sub>q</sub> = round(x / S + Z): S is the gap, Z says which label stands for zero.</div>
+
+<h2 id="why-one-ruler-for-a-whole-layer-fails">Why one ruler for a whole layer fails</h2>
+<p>A real layer has millions of weights, not 8. This one, <code>blk.0.attn_q.weight</code>, is 1536 × 1536 =
+<b>2,359,296</b> weights. The smallest is −2.65 and the largest 3.10, but <b>92.6%</b> of them sit between −0.05 and 0.05:
+a few large outliers stretch the range.</p>
+<p>Spread 16 labels across the whole range and the gap becomes (3.10 + 2.65) ÷ 15 = <b>0.38</b>. Almost every weight is far
+smaller than that, so they all land on the same label. I tried it: all 8 weights above came back as exactly <b>0</b>. Even
+8 bits with one ruler for the layer (a gap of 0.0225) still turned all 8 into 0.</p>
+<p>So real formats cut each layer into <b>small blocks</b>, and give every block its own start and its own gap. A block of
+32 neighbouring weights spans a tiny range, so its 16 labels sit close together.</p>
+
+<h2 id="how-q4-k-m-really-stores-weights">How Q4_K_M really stores weights</h2>
+<p>The popular llama.cpp format <b>Q4_K_M</b> is built from Q4_K, which llama.cpp's pull request 1684 describes as
+"4-bit quantization in super-blocks containing 8 blocks, each block having 32 weights. Scales and mins are quantized with
+6 bits." Counting one block:</p>
+<pre>32 labels × 4 bits = 128 bits
++ 6-bit start (min) + 6-bit gap (scale) = 140 bits for 32 weights
+140 ÷ 32 = about 4.4 bits per weight</pre>
+<p>The same page gives 4.5 once the values shared by each super-block are counted. And the "M" variant keeps some layers at
+6 bits: it "uses GGML_TYPE_Q6_K for half of the attention.wv and feed_forward.w2 tensors, else GGML_TYPE_Q4_K". In my file
+the tensor types are 169 Q4_K, 29 Q6_K and 141 F32 (small vectors such as norms stay at full precision).</p>
+<p>Count everything in my file and it averages <b>5.03 bits per number</b>: 1,117,320,736 bytes × 8 ÷ 1,777,088,000. (llama.cpp's
+own load log says 5.00, because it counts only the weights, not the 5.9 MB of metadata and tokenizer at the front of the file;
+see the <a href="../gguf/">GGUF article</a>.) That is why a "4-bit" file is not a quarter of the size: a quarter of 3.56 GB
+would be 0.89 GB, and the real file is 1.12 GB.</p>
+
+<h2 id="what-it-does-to-file-size">What it does to file size</h2>
+<div class="tbl"><table>
+<tr><th>Model</th><th>16-bit original</th><th>Q4_K_M</th></tr>
+<tr><td>Qwen2.5 1.5B (my file)</td><td>3.56 GB</td><td>1.12 GB</td></tr>
+<tr class="k"><td>Llama 3.1 8B</td><td>32.1 GB</td><td>4.9 GB (fits in 16 GB with room to spare)</td></tr>
+<tr><td>Llama 3.1 405B</td><td>1,625 GB</td><td>249 GB</td></tr>
+</table></div>
+<p>Same model, same number of weights, just fewer bits on each one. That sounds too good to be true, so I tested it.</p>
+
+<h2 id="the-test-same-model-4-precisions">The test: same model, 4 precisions</h2>
+<p>Qwen publishes this model officially at several precision levels, which makes a fair comparison. I downloaded 4 of them and
+asked each the same <b>70 short questions</b> (facts and sums) on the laptop, at temperature 0, and timed 160-token answers.</p>
+<div class="tbl"><table>
+<tr><th>File</th><th>Bits per number</th><th>Size</th><th>Speed (tokens/s, median)</th><th>Score</th></tr>
+<tr><td>F16 (original)</td><td>16.0</td><td>3.56 GB</td><td>4.9</td><td>69 / 70</td></tr>
+<tr><td>Q8_0</td><td>8.5</td><td>1.89 GB</td><td>6.4</td><td>69 / 70</td></tr>
+<tr class="k"><td>Q4_K_M</td><td>5.0</td><td>1.12 GB</td><td>10.5</td><td>68 / 70</td></tr>
+<tr><td>Q2_K</td><td>3.4</td><td>0.75 GB</td><td>10.6</td><td>42 / 70</td></tr>
+</table></div>
+<p class="cap">Speed is the median of 5 runs per file. The laptop slows down as it heats up (the same 16-bit file gave 5.95,
+then 4.03, then 2.55 tokens a second in three runs back to back), so only "about 5" and "about 10" are meaningful.</p>
+<p>Less than a third of the size, and almost nothing lost: the 16-bit and 8.5-bit files both scored 69, the 5-bit file 68.
+But at 3.4 bits the score fell to <b>42</b>. Some of its real answers:</p>
+<div class="tbl"><table>
+<tr><th>Question</th><th>Answer at 3.4 bits</th></tr>
+<tr><td>What is the capital of Japan?</td><td>Osaka.</td></tr>
+<tr><td>How many legs does a spider have?</td><td>Three.</td></tr>
+<tr><td>How many minutes are in an hour?</td><td>12.</td></tr>
+<tr><td>What is 12 times 11?</td><td>144</td></tr>
+<tr><td>Which number is bigger: 0.5 or 0.25?</td><td>0.25</td></tr>
+<tr><td>What is 17 + 26?</td><td>It is not possible to know this because the number …</td></tr>
+</table></div>
+<div class="box warn"><b>How much to read into this.</b> 70 easy questions are a quick check, not a benchmark: I wrote them,
+and a script marks each answer by looking for the right word or number. (Every file got "How many letters are in the word
+banana?" wrong.) But the result matches the warning in llama.cpp's own documentation: quantization "may introduce some
+accuracy loss".</div>
+
+<h2 id="what-you-give-up">What you give up</h2>
+<p><b>1. Accuracy, and not in a smooth slope.</b> Going from 16 to 5 bits cost 1 answer out of 70. Going to 3.4 bits cost 27.
+The damage arrives as a cliff, not a ramp.</p>
+<p><b>2. It fails silently.</b> I asked each file for the approximate speed of light in kilometres per second. The 16-bit file
+(and the 8.5-bit one) said 300,000. The 5-bit file said <b>300,000,000 km/s</b>: 1,000 times too fast, and just as confident.
+(The real value is 299,792 km/s.) Nothing warns you which answers changed, so the only way to know is to test on your own tasks.</p>
+<p><b>3. It never makes the model smarter.</b> Quantization removes detail from numbers; it cannot add knowledge the model never
+had. The best a smaller file can do is match the original, and what fits on a laptop is still a small model: Mistral Large 4
+has about 590 times more numbers than this one.</p>
+<p><b>Not on the list: speed.</b> The smaller file was faster on this laptop, about 10 tokens a second against 5.</p>
+
+<h2 id="open-weights-where-the-numbers-come-from">Open weights: where the numbers come from</h2>
+<p>All of this depends on having the numbers in the first place. Some companies keep the weights on their own servers: you send
+text in, text comes back, and you never see the file. Others publish the file itself. The Open Source Initiative defines open
+weights as "the final weights and biases of a trained neural network".</p>
+<p>The Qwen model here is one of them: its files are on Hugging Face under the Apache 2.0 license. Mistral said on 6 October
+2026, when it launched Large 4, "We will release the weights by the end of the month."</p>
+<div class="box"><b>Open weights is not open source.</b> You get the finished numbers, but not the training data or the
+training code (the same OSI page makes this distinction). Still, once the file is on your disk, the model runs on your machine,
+offline, whenever you want.</div>
+
+<h2 id="should-you-run-ai-on-your-laptop">Should you run AI on your laptop?</h2>
+<ul>
+<li><b>Privacy:</b> nothing you type leaves the machine.</li>
+<li><b>Offline:</b> it works with no connection at all.</li>
+<li><b>Cost:</b> there is no price per token.</li>
+<li><b>But:</b> the most capable models still live in data centres.</li>
+</ul>
+<p>To try it, pick a model whose <b>Q4_K_M</b> file is comfortably smaller than your memory; it is the format llama.cpp uses in
+its own example commands. Then test it on the questions you actually care about, because of point 2 above.</p>
+
+<h2 id="the-whole-idea-in-one-line">The whole idea in one line</h2>
+<p>A model is numbers times bits. Open weights give you the numbers. Quantization cuts the bits, from 16 down to about 5, and
+that's why a laptop from 2018 with no internet can run one.</p>
+
+<h2 id="sources">Sources</h2><ul class="sources">
+<li>Hugging Face Optimum, <a href="https://huggingface.co/docs/optimum/concept_guides/quantization">Quantization concept guide</a>: "the usual 32-bit floating point", x_q = round(x/S + Z)</li>
+<li>llama.cpp, <a href="https://github.com/ggml-org/llama.cpp/blob/master/tools/quantize/README.md">quantize README</a>: Llama 3.1 sizes (32.1 / 4.9 GB, 1,625.1 / 249.1 GB), "may introduce some accuracy loss", Q4_K_M in the example commands</li>
+<li>llama.cpp <a href="https://github.com/ggml-org/llama.cpp/pull/1684">pull request 1684</a>: K-quant block layout (super-blocks of 8 blocks of 32 weights, 6-bit scales and mins) and the Q4_K_M tensor mix</li>
+<li>Qwen, <a href="https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF">Qwen2.5-1.5B-Instruct-GGUF</a>: the official F16, Q8_0, Q4_K_M and Q2_K files (Apache 2.0)</li>
+<li>Mistral, <a href="https://docs.mistral.ai/models/mistral-large-4-0">Mistral Large 4 model card</a> (1.05T parameters) and <a href="https://mistral.ai/news/mistral-large-4/">launch post</a> (6 October 2026)</li>
+<li>Open Source Initiative, <a href="https://opensource.org/ai/open-weights">Open Weights</a></li>
+<li>Intel, <a href="https://www.intel.com/content/www/us/en/products/sku/149091/intel-core-i78565u-processor-8m-cache-up-to-4-60-ghz/specifications.html">Core i7-8565U specifications</a> (4 cores, Q3'18)</li>
+<li>Experiments: my own runs on a Dell Inspiron 5584 (i7-8565U, 16 GB), llama.cpp build b11553 CPU-only, 4 threads, 11 October 2026: weights read from the F16 file, 70-question quiz at temperature 0, 160-token speed runs</li>
+</ul>
+<div class="endcard"><h3>Watch the full video</h3><p>10 minutes, animated: the same 8 weights, the same test and the same costs as this article.</p>
+<div class="actions"><a class="btn ytbtn" data-watch="quant-long" target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.6 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg>Watch on YouTube</a>
+<a class="btn" data-channel target="_blank" rel="noopener">Subscribe</a>
+<a class="btn" href="https://www.linkedin.com/in/rohit-kumar-singh-621818a9/" target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><path d="M20.4 20.5h-3.6v-5.6c0-1.3 0-3-1.8-3s-2.1 1.4-2.1 2.9v5.7H9.3V9h3.4v1.6h.1c.5-.9 1.6-1.8 3.4-1.8 3.6 0 4.3 2.4 4.3 5.5v6.2zM5.3 7.4a2.1 2.1 0 1 1 0-4.1 2.1 2.1 0 0 1 0 4.1zM7.1 20.5H3.5V9h3.6v11.5zM22.2 0H1.8C.8 0 0 .8 0 1.7v20.6c0 .9.8 1.7 1.8 1.7h20.4c1 0 1.8-.8 1.8-1.7V1.7C24 .8 23.2 0 22.2 0z"/></svg>Follow on LinkedIn</a></div></div>
+<a class="next" href="../gguf/"><span>Next explainer</span><b>What is inside a GGUF file →</b></a>
+</article>
+</div>
+
+<footer class="site"><div class="in"><span>© 2026 Rohit Kumar Singh</span>
+<span><a href="https://www.linkedin.com/in/rohit-kumar-singh-621818a9/" target="_blank" rel="noopener">LinkedIn</a> · <a href="https://github.com/gotherohit/AIML" target="_blank" rel="noopener">GitHub</a> · <a href="mailto:rohitkrsingh2000@gmail.com">Email</a></span>
+<p class="ai-note"><b>About AI assistance:</b> the articles and code on this site are developed with the help of AI tools. Explanations are refined through in-depth conversations with AI, and code is written with AI assistance. Experiments are run for real, results come from that code, and claims are checked against the cited sources.</p></div></footer>
+<script src="../../assets/site.js"></script>
+</body></html>

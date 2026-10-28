@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>What is inside a GGUF file, byte by byte</title>
+<meta name="description" content="The 4 parts of every GGUF file (header, metadata, tensor index, weights), read byte by byte from a real Qwen2.5 file, and how llama.cpp checks, maps and runs it.">
+<link rel="canonical" href="https://gotherohit.github.io/AIML/explainers/gguf/">
+<meta property="og:type" content="article"><meta property="og:title" content="What is inside a GGUF file, byte by byte">
+<meta property="og:description" content="The 4 parts of every GGUF file (header, metadata, tensor index, weights), read byte by byte from a real Qwen2.5 file, and how llama.cpp checks, maps and runs it."><meta property="og:url" content="https://gotherohit.github.io/AIML/explainers/gguf/">
+<meta property="og:image" content="https://gotherohit.github.io/AIML/images/covers/gguf.jpg"><meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x2='1' y2='1'%3E%3Cstop stop-color='%2335d6c0'/%3E%3Cstop offset='1' stop-color='%23ff6a2b'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../assets/site.css"><style>:root{--accent:#ff5a1f;--accent2:#1fd1b6}</style>
+</head><body>
+<header class="topbar"><div class="in">
+<a class="brand" href="../../"><span class="mark">RK</span>Rohit Kumar Singh</a>
+<nav><a class="txt" href="../../#explainers">Explainers</a><a class="txt" href="../../#projects">Projects</a><a class="txt" href="../../#about">About</a>
+<a class="icon" data-channel target="_blank" rel="noopener" aria-label="YouTube"><svg viewBox="0 0 24 24"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.6 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg></a>
+<a class="icon" href="https://www.linkedin.com/in/rohit-kumar-singh-621818a9/" target="_blank" rel="noopener" aria-label="LinkedIn"><svg viewBox="0 0 24 24"><path d="M20.4 20.5h-3.6v-5.6c0-1.3 0-3-1.8-3s-2.1 1.4-2.1 2.9v5.7H9.3V9h3.4v1.6h.1c.5-.9 1.6-1.8 3.4-1.8 3.6 0 4.3 2.4 4.3 5.5v6.2zM5.3 7.4a2.1 2.1 0 1 1 0-4.1 2.1 2.1 0 0 1 0 4.1zM7.1 20.5H3.5V9h3.6v11.5zM22.2 0H1.8C.8 0 0 .8 0 1.7v20.6c0 .9.8 1.7 1.8 1.7h20.4c1 0 1.8-.8 1.8-1.7V1.7C24 .8 23.2 0 22.2 0z"/></svg></a>
+<a class="icon" href="https://github.com/gotherohit/AIML" target="_blank" rel="noopener" aria-label="GitHub"><svg viewBox="0 0 24 24"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.3-3.1-.2-.4-.6-1.6 0-3.2 0 0 1-.3 3.4 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.2.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.5.4.9 1.1.9 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"/></svg></a></nav>
+</div></header>
+<div class="article-head">
+<div class="crumbs"><a href="../../#explainers">Explainers</a> /</div>
+<h1>What is inside a GGUF file, byte by byte</h1>
+<p class="dek">A local AI model is one file ending in .gguf. This is what is inside it, read byte by byte from a real 1.1 GB file, and how an engine like llama.cpp turns it into something that talks.</p>
+<div class="tags" style="margin-bottom:16px"><span class="tag">GGUF</span><span class="tag">llama.cpp</span><span class="tag">Local AI</span><span class="tag">Real file</span></div>
+<div class="byline"><span>By <b>Rohit Kumar Singh</b></span><span>October 2026</span><span>5 min read</span></div>
+</div>
+<div class="videos"><div class="yt vertical" data-video="gguf-short" data-label="Short" data-title="1 file, 1 whole AI model: how GGUF works" data-cover="../../images/covers/gguf-short.jpg"></div></div>
+<div class="layout">
+<details class="toc"><summary>Contents</summary><ol><li><a href="#why-a-model-needs-a-format-at-all">Why a model needs a format at all</a></li><li><a href="#the-4-parts-in-order">The 4 parts, in order</a></li><li><a href="#part-1-the-header-byte-by-byte">Part 1: the header, byte by byte</a></li><li><a href="#part-2-the-metadata">Part 2: the metadata</a></li><li><a href="#part-3-the-tensor-index">Part 3: the tensor index</a></li><li><a href="#part-4-the-weights">Part 4: the weights</a></li><li><a href="#how-an-engine-reads-it">How an engine reads it</a></li><li><a href="#why-gguf-is-used">Why GGUF is used</a></li><li><a href="#two-common-claims-i-left-out">Two common claims I left out</a></li><li><a href="#the-whole-idea-in-one-line">The whole idea in one line</a></li></ol></details>
+<article class="prose">
+
+<div class="box key"><b>In one line:</b> GGUF is not the model and not the engine. It is the container: a labelled map first,
+then the weights, in one file. Everything on this page was read byte by byte from a real one:
+<code>qwen2.5-1.5b-instruct-q4_k_m.gguf</code>, 1,117,320,736 bytes (1.1 GB).</div>
+
+<h2 id="why-a-model-needs-a-format-at-all">Why a model needs a format at all</h2>
+<p>A model is weights: in this file, <b>1,777,088,000</b> numbers. Saved to disk, they are one long line of bytes, and bytes
+carry no labels. A program that opens them can't tell:</p>
+<ul>
+<li>where one matrix ends and the next begins,</li>
+<li>what shape each matrix has (1536 × 1536? 8960 × 1536?),</li>
+<li>how each number is stored (32-bit float, 16-bit float, about 4 bits),</li>
+<li>how many layers there are, and which piece of text each token number means.</li>
+</ul>
+<p>So weights always travel with a map. In the original Qwen repository that map is spread over 7 files:
+<code>model.safetensors</code> (the weights), <code>config.json</code> and <code>generation_config.json</code> (settings), and
+4 tokenizer files (<code>tokenizer.json</code>, <code>tokenizer_config.json</code>, <code>vocab.json</code>,
+<code>merges.txt</code>).</p>
+<p><b>GGUF packs all of it into one file, in a fixed order.</b> The specification's first sentence: "GGUF is a file format for
+storing models for inference with GGML and executors based on GGML", the library behind llama.cpp, the engine that runs models
+locally. Its stated goals include single-file deployment, mmap compatibility and "full information: all information needed to
+load a model is contained in the model file". Think of a shipping container with the packing list bolted to the door.</p>
+
+<h2 id="the-4-parts-in-order">The 4 parts, in order</h2>
+<div class="tbl"><table>
+<tr><th>Part</th><th>What it holds</th><th>In this file</th></tr>
+<tr><td>1. Header</td><td>Magic, version, 2 counts</td><td>24 bytes</td></tr>
+<tr><td>2. Metadata</td><td>Key and value pairs: architecture, sizes, tokenizer, chat template</td><td>26 entries, about 5.9 MB (almost all of it tokenizer data)</td></tr>
+<tr><td>3. Tensor index</td><td>1 row per tensor: name, shape, number type, offset</td><td>339 rows, 19,304 bytes</td></tr>
+<tr class="k"><td>4. Weights</td><td>The tensor data itself</td><td>1,111,370,240 bytes: <b>99.47%</b> of the file</td></tr>
+</table></div>
+
+<h2 id="part-1-the-header-byte-by-byte">Part 1: the header, byte by byte</h2>
+<p>The spec defines the header as a 4-byte magic number, a 4-byte version, and two 8-byte counts: 4 + 4 + 8 + 8 = 24 bytes.
+These are the first 24 bytes of the file, in hex:</p>
+<pre>47 47 55 46                  magic: the letters G G U F
+03 00 00 00                  version: 3
+53 01 00 00 00 00 00 00      tensor count: 339
+1A 00 00 00 00 00 00 00      metadata entries: 26</pre>
+<p><b>Why is 47 a G?</b> In ASCII the letter G is number 71, which is 47 in hexadecimal; U is 55 and F is 46. That's how a
+program knows what it's holding.</p>
+<p><b>Why does <code>53 01</code> mean 339?</b> The file is little-endian: the low byte comes first. Read it backwards, 0x0153 =
+1 × 256 + 5 × 16 + 3 = 339. And 0x1A = 26. llama.cpp's own log for this file agrees: "loaded meta data with 26 key-value
+pairs and 339 tensors … (version GGUF V3 (latest))".</p>
+
+<h2 id="part-2-the-metadata">Part 2: the metadata</h2>
+<p>Keys and values, like a settings file. Some of the 26 entries in this file:</p>
+<div class="tbl"><table>
+<tr><th>Key</th><th>Value</th></tr>
+<tr><td><code>general.architecture</code></td><td>qwen2</td></tr>
+<tr><td><code>qwen2.block_count</code></td><td>28 (layers)</td></tr>
+<tr><td><code>qwen2.context_length</code></td><td>32,768</td></tr>
+<tr><td><code>qwen2.embedding_length</code></td><td>1,536</td></tr>
+<tr><td><code>qwen2.feed_forward_length</code></td><td>8,960</td></tr>
+<tr><td><code>qwen2.attention.head_count</code> / <code>head_count_kv</code></td><td>12 / 2</td></tr>
+<tr><td><code>tokenizer.ggml.model</code></td><td>gpt2</td></tr>
+<tr><td><code>tokenizer.ggml.tokens</code></td><td>an array of 151,936 strings: the whole vocabulary</td></tr>
+<tr><td><code>tokenizer.chat_template</code></td><td>the model's chat template, as Jinja code (see the <a href="../chat-templates/">chat template article</a>)</td></tr>
+</table></div>
+<p>Each entry is stored as: the key text, a type code (string, 32-bit integer, array …), then the value. The very first one,
+<code>general.architecture = qwen2</code>, takes 45 bytes: an 8-byte length (20), the 20 letters of the key, a 4-byte type
+code (8 = string), another 8-byte length (5), and the 5 letters <code>qwen2</code>. Because every value is labelled, a newer
+file can add keys and an older program simply skips the ones it doesn't know.</p>
+
+<h2 id="part-3-the-tensor-index">Part 3: the tensor index</h2>
+<p>One row per tensor: its name, its shape, its number type, and an <b>offset</b>, the byte where its data starts. The first
+5 rows of this file:</p>
+<div class="tbl"><table>
+<tr><th>Name</th><th>Shape</th><th>Type</th><th>Offset</th></tr>
+<tr><td><code>output.weight</code></td><td>1536 × 151936</td><td>Q6_K</td><td>0</td></tr>
+<tr><td><code>token_embd.weight</code></td><td>1536 × 151936</td><td>Q4_K</td><td>191,439,360</td></tr>
+<tr><td><code>blk.0.attn_norm.weight</code></td><td>1536</td><td>F32</td><td>322,712,064</td></tr>
+<tr><td><code>blk.0.ffn_down.weight</code></td><td>8960 × 1536</td><td>Q6_K</td><td>322,718,208</td></tr>
+<tr><td><code>blk.0.ffn_gate.weight</code></td><td>1536 × 8960</td><td>Q4_K</td><td>334,007,808</td></tr>
+</table></div>
+<div class="box"><b>Offsets count from the start of part 4, not the start of the file.</b> Part 4 begins at byte 5,950,496
+(the index ends at byte 5,950,493, then 3 bytes of padding so the data starts on a 32-byte boundary). So
+<code>blk.0.attn_q.weight</code>, 1536 × 1536, Q4_K, at offset 351,052,288, really begins at byte 5,950,496 + 351,052,288 =
+<b>357,002,784</b>.</div>
+
+<h2 id="part-4-the-weights">Part 4: the weights</h2>
+<p>Everything after the index is tensor data: 1,111,370,240 bytes, 99.47% of the file. Each tensor's bytes are laid out in its
+own number type, so the index is all a program needs to find and decode any of them.</p>
+
+<h2 id="how-an-engine-reads-it">How an engine reads it</h2>
+<ol>
+<li><b>Read 4 bytes.</b> If they don't say GGUF, stop: the spec calls it the "magic number to announce that this is a GGUF file".</li>
+<li><b>Read the metadata.</b> It says <code>qwen2</code>, so the engine builds that network: 28 empty layers, waiting for weights.
+The file only <i>describes</i> the model; the engine must already know how to run a qwen2 network.</li>
+<li><b>Read the index.</b> For each layer it looks up a name and gets back a shape, a type and an offset.</li>
+<li><b>Map the weights, don't read them.</b> It doesn't read 1 GB up front. It memory-maps the file, and the operating system
+pulls in each piece when it's first used. The spec lists "mmap compatibility: models can be loaded using mmap for fast loading";
+llama.cpp's log for this file shows <code>load_mode = mmap</code> and a "CPU_Mapped model buffer size = 1059.89 MiB", which is
+exactly the 1,111,370,240 bytes of tensor data.</li>
+<li><b>Build the tokenizer from the metadata.</b> Now it's ready for a prompt. Given "The capital of France is", this file
+continued: " Paris."</li>
+</ol>
+<div class="box warn"><b>"Mapped, not read in" is about loading, not zero memory.</b> This llama.cpp build also made a 596 MiB
+repacked copy of some tensors for speed (<code>CPU_REPACK</code>), so the weights do use memory once the model runs.</div>
+
+<h2 id="why-gguf-is-used">Why GGUF is used</h2>
+<ul>
+<li><b>One file</b> holds everything needed to load the model.</li>
+<li><b>It loads fast,</b> because the weights are mapped straight from disk.</li>
+<li><b>Any precision.</b> Every tensor names its own number type, so the same format holds 16-bit weights or squeezed 4-bit ones.
+The 16-bit version of this model is 3,560,416,288 bytes (3.56 GB); this Q4_K_M file is 1.12 GB.</li>
+</ul>
+<div class="box"><b>"4-bit" is a label.</b> This Q4_K_M file mixes 169 Q4_K tensors, 29 Q6_K and 141 F32, and llama.cpp reports
+it as 5.00 bits per weight (counting the weights only; counting the whole file, metadata included, gives 5.03). How those
+formats store a weight in 4 bits is the subject of the <a href="../quantization/">quantization article</a>.</div>
+
+<h2 id="two-common-claims-i-left-out">Two common claims I left out</h2>
+<p><b>What the letters GGUF stand for:</b> the specification doesn't say, so I don't either. <b>"GGUF is safe because it
+contains no code":</b> it contains a chat template, and a template engine executes it, so I don't repeat that claim.</p>
+
+<h2 id="the-whole-idea-in-one-line">The whole idea in one line</h2>
+<p>GGUF is the container: a 24-byte header, a labelled map of settings and tensors, then the weights, in one file an engine
+can check, map and run.</p>
+
+<h2 id="sources">Sources</h2><ul class="sources">
+<li>ggml, <a href="https://github.com/ggml-org/ggml/blob/master/docs/gguf.md">GGUF specification</a>: header layout, metadata types, tensor info, alignment, goals (single file, mmap, full information)</li>
+<li><a href="https://github.com/ggml-org/llama.cpp">llama.cpp</a>, build b11553: load log for this file (26 key-value pairs, 339 tensors, GGUF V3, 5.00 BPW, mmap, CPU_Mapped 1059.89 MiB, CPU_REPACK 596 MiB)</li>
+<li>Qwen, <a href="https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct">Qwen2.5-1.5B-Instruct</a> (the original 7-file layout) and <a href="https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF">Qwen2.5-1.5B-Instruct-GGUF</a> (the files read here)</li>
+<li>Experiment: the Q4_K_M file read byte by byte with my own reader and cross-checked with llama.cpp's load log and the official gguf reader</li>
+</ul>
+<div class="endcard"><h3>Prefer watching?</h3><p>The Short opens the same file in under 3 minutes, byte by byte.</p>
+<div class="actions"><a class="btn ytbtn" data-watch="gguf-short" target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.6 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg>Watch on YouTube</a>
+<a class="btn" data-channel target="_blank" rel="noopener">Subscribe</a>
+<a class="btn" href="https://www.linkedin.com/in/rohit-kumar-singh-621818a9/" target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><path d="M20.4 20.5h-3.6v-5.6c0-1.3 0-3-1.8-3s-2.1 1.4-2.1 2.9v5.7H9.3V9h3.4v1.6h.1c.5-.9 1.6-1.8 3.4-1.8 3.6 0 4.3 2.4 4.3 5.5v6.2zM5.3 7.4a2.1 2.1 0 1 1 0-4.1 2.1 2.1 0 0 1 0 4.1zM7.1 20.5H3.5V9h3.6v11.5zM22.2 0H1.8C.8 0 0 .8 0 1.7v20.6c0 .9.8 1.7 1.8 1.7h20.4c1 0 1.8-.8 1.8-1.7V1.7C24 .8 23.2 0 22.2 0z"/></svg>Follow on LinkedIn</a></div></div>
+<a class="next" href="../chat-templates/"><span>Next explainer</span><b>What your AI actually sees when you chat →</b></a>
+</article>
+</div>
+
+<footer class="site"><div class="in"><span>© 2026 Rohit Kumar Singh</span>
+<span><a href="https://www.linkedin.com/in/rohit-kumar-singh-621818a9/" target="_blank" rel="noopener">LinkedIn</a> · <a href="https://github.com/gotherohit/AIML" target="_blank" rel="noopener">GitHub</a> · <a href="mailto:rohitkrsingh2000@gmail.com">Email</a></span>
+<p class="ai-note"><b>About AI assistance:</b> the articles and code on this site are developed with the help of AI tools. Explanations are refined through in-depth conversations with AI, and code is written with AI assistance. Experiments are run for real, results come from that code, and claims are checked against the cited sources.</p></div></footer>
+<script src="../../assets/site.js"></script>
+</body></html>

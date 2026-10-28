@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Why LLMs cache K and V, but never Q</title>
+<meta name="description" content="Why cached prompt tokens cost 5% of the input price: the KV cache from first principles, why queries are never cached, why only a prefix can be reused, and real GPT-2 tests.">
+<link rel="canonical" href="https://gotherohit.github.io/AIML/explainers/kv-cache/">
+<meta property="og:type" content="article"><meta property="og:title" content="Why LLMs cache K and V, but never Q">
+<meta property="og:description" content="Why cached prompt tokens cost 5% of the input price: the KV cache from first principles, why queries are never cached, why only a prefix can be reused, and real GPT-2 tests."><meta property="og:url" content="https://gotherohit.github.io/AIML/explainers/kv-cache/">
+<meta property="og:image" content="https://gotherohit.github.io/AIML/images/covers/kv-cache.jpg"><meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x2='1' y2='1'%3E%3Cstop stop-color='%2335d6c0'/%3E%3Cstop offset='1' stop-color='%23ff6a2b'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../assets/site.css"><style>:root{--accent:#ffb454;--accent2:#59c2ff}</style>
+</head><body>
+<header class="topbar"><div class="in">
+<a class="brand" href="../../"><span class="mark">RK</span>Rohit Kumar Singh</a>
+<nav><a class="txt" href="../../#explainers">Explainers</a><a class="txt" href="../../#projects">Projects</a><a class="txt" href="../../#about">About</a>
+<a class="icon" data-channel target="_blank" rel="noopener" aria-label="YouTube"><svg viewBox="0 0 24 24"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.6 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg></a>
+<a class="icon" href="https://www.linkedin.com/in/rohit-kumar-singh-621818a9/" target="_blank" rel="noopener" aria-label="LinkedIn"><svg viewBox="0 0 24 24"><path d="M20.4 20.5h-3.6v-5.6c0-1.3 0-3-1.8-3s-2.1 1.4-2.1 2.9v5.7H9.3V9h3.4v1.6h.1c.5-.9 1.6-1.8 3.4-1.8 3.6 0 4.3 2.4 4.3 5.5v6.2zM5.3 7.4a2.1 2.1 0 1 1 0-4.1 2.1 2.1 0 0 1 0 4.1zM7.1 20.5H3.5V9h3.6v11.5zM22.2 0H1.8C.8 0 0 .8 0 1.7v20.6c0 .9.8 1.7 1.8 1.7h20.4c1 0 1.8-.8 1.8-1.7V1.7C24 .8 23.2 0 22.2 0z"/></svg></a>
+<a class="icon" href="https://github.com/gotherohit/AIML" target="_blank" rel="noopener" aria-label="GitHub"><svg viewBox="0 0 24 24"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.3-3.1-.2-.4-.6-1.6 0-3.2 0 0 1-.3 3.4 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.2.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.5.4.9 1.1.9 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"/></svg></a></nav>
+</div></header>
+<div class="article-head">
+<div class="crumbs"><a href="../../#explainers">Explainers</a> /</div>
+<h1>Why LLMs cache K and V, but never Q</h1>
+<p class="dek">Every price list has three prices for the same tokens. The reason is the KV cache: what keys, values and queries are, why only keys and values are worth keeping, and what that means for prompt caching, with real tests on GPT-2.</p>
+<div class="tags" style="margin-bottom:16px"><span class="tag">KV cache</span><span class="tag">Attention</span><span class="tag">Prompt caching</span><span class="tag">Real experiment</span></div>
+<div class="byline"><span>By <b>Rohit Kumar Singh</b></span><span>October 2026</span><span>7 min read</span></div>
+</div>
+<div class="videos two">
+<div class="yt" data-video="kv-long" data-label="Full video · 7 min" data-title="Why cache reads are 95% cheaper (KV cache explained)" data-cover="../../images/covers/kv-cache.jpg"></div>
+<div class="yt vertical" data-video="kv-short" data-label="Short" data-title="Why cached tokens cost 95% less" data-cover="../../images/covers/kv-cache-short.jpg"></div>
+</div>
+<div class="layout">
+<details class="toc"><summary>Contents</summary><ol><li><a href="#three-prices-for-the-same-tokens">Three prices for the same tokens</a></li><li><a href="#one-token-at-a-time">One token at a time</a></li><li><a href="#attention-query-key-value">Attention: query, key, value</a></li><li><a href="#the-kv-cache">The KV cache</a></li><li><a href="#why-k-and-v-but-never-q">Why K and V, but never Q</a></li><li><a href="#why-reusing-them-is-safe">Why reusing them is safe</a></li><li><a href="#prompt-caching-the-same-trick-between-requests">Prompt caching: the same trick, between requests</a></li><li><a href="#the-price-list-explained">The price list, explained</a></li><li><a href="#three-rules-that-follow-from-prefix">Three rules that follow from &quot;prefix&quot;</a></li><li><a href="#the-playbook">The playbook</a></li><li><a href="#the-whole-idea-in-one-line">The whole idea in one line</a></li></ol></details>
+<article class="prose">
+
+<div class="box key"><b>In one line:</b> keys and values are what every past token offers the tokens after it, so they are
+worth keeping; a query is a question asked once, so it isn't. Caching K and V is why reading a cached prompt costs 5% of the
+normal price: the model isn't reading again, it is loading work already done.</div>
+
+<h2 id="three-prices-for-the-same-tokens">Three prices for the same tokens</h2>
+<p>Every recent API price list has three prices for the exact same input tokens. Per million tokens (5-minute cache writes,
+as listed on 9 October 2026):</p>
+<div class="tbl"><table>
+<tr><th>Model</th><th>Input</th><th>Cache write</th><th>Cache read</th></tr>
+<tr><td>Claude Opus 5.5</td><td>$4</td><td>$5</td><td>$0.20</td></tr>
+<tr><td>Claude Sonnet 5.5</td><td>$2</td><td>$2.50</td><td>$0.10</td></tr>
+<tr><td>GPT-6.1 Sol</td><td>$2</td><td>$2.50</td><td>$0.10</td></tr>
+</table></div>
+<p class="cap">From Anthropic's prompt caching pricing table and OpenAI's GPT-6.1 Sol model page. Prices change; check the current pages.</p>
+<p>Same tokens: one price 25% higher, one 95% lower. The reason is two letters, <b>K</b> and <b>V</b>, and the reason there's
+no <b>Q</b> shows how these models actually work.</p>
+
+<h2 id="one-token-at-a-time">One token at a time</h2>
+<p>A language model never writes a sentence. It writes one <b>token</b>, a small chunk of text. To pick it, it reads everything
+before it; then the new token joins the text and the whole thing runs again. The Transformer paper calls this
+<i>auto-regressive</i>: "consuming the previously generated symbols as additional input when generating the next".</p>
+<p>So think about token 1,000. To write it, the model needs the 999 before it. For token 1,001 it needs the same 999 again,
+plus one more (Hugging Face's caching guide uses exactly this example). Almost all of that work is identical to the step before.</p>
+
+<h2 id="attention-query-key-value">Attention: query, key, value</h2>
+<p>How does a token read the others? With <b>attention</b>, which the paper describes as "mapping a query and a set of
+key-value pairs to an output". An analogy helps:</p>
+<ul>
+<li>Every token already on the page is a <b>book</b> in a library.</li>
+<li>Its <b>key</b> is the label on the spine: what this token is about.</li>
+<li>Its <b>value</b> is what's inside: the information it carries.</li>
+<li>The token being processed is the <b>reader</b>, and it walks in with a question: its <b>query</b>.</li>
+</ul>
+<p>The query is compared with every key: strong match, high score; weak match, low score. Then the reader takes a blend of the
+values, weighted by those scores. That is the whole formula:</p>
+<pre>Attention(Q, K, V) = softmax(Q·Kᵀ / √d) · V</pre>
+<p>One more rule: a token can only look <b>backward</b>. The paper masks the future on purpose, to "prevent positions from
+attending to subsequent positions". And all of this runs in every layer; GPT-2 small has 12.</p>
+
+<h2 id="the-kv-cache">The KV cache</h2>
+<p>Put the two ideas together. Generating token by token with no cache, the model recomputes the key and value of every earlier
+token at every step: 5 keys and values at step 5, all of those again plus one at step 6, a triangle of work that keeps growing.
+But the old ones come out <b>exactly the same every time</b>. So compute each key and value once, and keep it. That is the
+<b>KV cache</b>: each step computes 1 new key and 1 new value, appends them, and moves on.</p>
+<div class="tbl"><table>
+<tr><th></th><th>Work per step</th></tr>
+<tr><td>No cache</td><td>recompute K and V for every token so far</td></tr>
+<tr class="k"><td>KV cache</td><td>compute K and V for the newest token only, read the rest from memory</td></tr>
+</table></div>
+<p>I ran it on <b>GPT-2 small on a laptop CPU</b>: a 400-token prompt, then 200 new tokens.</p>
+<div class="tbl"><table>
+<tr><th>Run</th><th>Time</th></tr>
+<tr><td>Without the cache</td><td>265.39 s</td></tr>
+<tr class="k"><td>With the cache</td><td>13.47 s</td></tr>
+</table></div>
+<p>Same output, token for token, about <b>20 times faster</b> (19.7×). Another machine will give other times; the ratio is the point.</p>
+
+<h2 id="why-k-and-v-but-never-q">Why K and V, but never Q</h2>
+<p>Because of who uses them. A key and a value are what a token <b>offers</b> to everyone after it: token 3's key is read by
+token 4, token 5, token 500, again and again. A query is different: it is the question a token asks <b>while it is being
+processed</b>. Once that token has its answer, the question is finished. Token 500 doesn't care what token 3 asked; it only
+cares what token 3 has to offer.</p>
+<p>So each step needs exactly <b>one</b> query, the newest token's. Hugging Face's guide says it plainly: "you only need the last
+token's query". You can see it in the model's attention weights on a 15-token text:</p>
+<div class="tbl"><table>
+<tr><th></th><th>Attention shape (GPT-2)</th><th>Meaning</th></tr>
+<tr><td>No cache</td><td><code>(1, 12, 15, 15)</code></td><td>15 query rows × 15 keys, in each of 12 heads</td></tr>
+<tr class="k"><td>With the cache</td><td><code>(1, 12, 1, 15)</code></td><td>1 query row × 15 keys</td></tr>
+</table></div>
+<p>The next-token scores from the two runs differ by at most 0.00005: rounding. And inside GPT-2's cache, each layer holds
+exactly two things: <code>['keys', 'values']</code>. Keys and values are written once and read forever; a query is asked once.
+Caching it would mean saving a question that's already been answered.</p>
+
+<h2 id="why-reusing-them-is-safe">Why reusing them is safe</h2>
+<p>Because of the backward-only rule. A token's key and value depend only on the text <b>before</b> it, so adding text at the
+end can't change them. I tested both directions on GPT-2:</p>
+<p><b>Append a sentence</b> (14 tokens → 24) and compare every earlier key and value in all 12 layers: the largest difference
+was <b>0.00001</b> (1.05e-05), on values that go up to 20.6. Rounding noise.</p>
+<p><b>Change one early token</b> (token 3, " helpful" → " careful") and look at the tokens after it:</p>
+<div class="tbl"><table>
+<tr><th>Layer</th><th>0</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th><th>10</th><th>11</th></tr>
+<tr><td>Largest change, tokens after it</td><td>0</td><td>0.23</td><td>0.39</td><td>0.66</td><td>1.40</td><td>1.99</td><td>2.34</td><td>1.57</td><td>1.14</td><td>1.47</td><td>1.34</td><td>1.18</td></tr>
+</table></div>
+<p>The tokens before the change were untouched (0 in every layer). The tokens after it changed in <b>11 of 12 layers</b>.
+The one that held is layer 0, whose keys and values come from each token and its position alone, before any attention has
+looked at other tokens. Before the change, the cache is perfect; after it, useless. That's why caching is always about a
+<b>prefix</b>.</p>
+
+<h2 id="prompt-caching-the-same-trick-between-requests">Prompt caching: the same trick, between requests</h2>
+<p>So far the cache lives for a single reply. <b>Prompt caching</b> keeps it alive between requests. An agent sends the same
+tools and the same system prompt on every call; instead of rebuilding their keys and values each time, the provider keeps
+them. OpenAI's guide says it directly: "The prompt cache stores key-value (KV) tensors, not the tokens themselves." When the
+next request arrives and its start matches, the model picks up from saved work, which is also why the reply starts sooner:
+there is less to process before the first token.</p>
+
+<h2 id="the-price-list-explained">The price list, explained</h2>
+<p><b>Cache read: 5% of the input price</b> on Opus 5.5, Sonnet 5.5 and GPT-6.1 Sol. You're not paying the model to read again;
+you're paying to load work that's already done.</p>
+<p><b>Cache write: 1.25× the input price</b> on all three. The docs don't give a reason for that premium, so I won't invent one.
+But look at what a write has to keep. In GPT-2 small, one token goes in as one number (" helpful" is token 7613). Its keys and
+values across 12 layers are:</p>
+<pre>2 (K and V) × 12 layers × 12 heads × 64 numbers = 18,432 numbers
+18,432 × 4 bytes (float32) = 73,728 bytes, about 74 KB, for 1 token</pre>
+<p>That's on a small, older model; hosted models don't publish their sizes, so I don't extrapolate. And the trade pays off fast:</p>
+<div class="tbl"><table>
+<tr><th>Cached part, in units of the input price</th><th>Request 1</th><th>Request 2</th><th>Total</th></tr>
+<tr><td>No caching</td><td>1</td><td>1</td><td>2.00</td></tr>
+<tr class="k"><td>Prompt caching</td><td>1.25 (write)</td><td>0.05 (read)</td><td>1.30</td></tr>
+</table></div>
+<p>By the second request you're already ahead.</p>
+
+<h2 id="three-rules-that-follow-from-prefix">Three rules that follow from "prefix"</h2>
+<p><b>Rule 1: it's an exact match, from the first token.</b> Anthropic's docs: "Cache hits require 100% identical prompt
+segments." On Claude the order is tools, then system, then messages. So a timestamp at the top of your system prompt quietly
+breaks the cache on every call (the docs' troubleshooting section names timestamps as a cause of misses).</p>
+<p><b>Rule 2: it expires.</b> Claude keeps an entry for 5 minutes, refreshed at no cost each time it's used, or 1 hour if you
+pay 2× on the write. OpenAI's newest models (GPT-5.6 and later) keep a prefix for at least 30 minutes after its last use.</p>
+<p><b>Rule 3: there's a minimum size.</b> 512 tokens on the newest Claude models, 1,024 on OpenAI's. Shorter than that and
+nothing is cached (and no error is returned).</p>
+
+<h2 id="the-playbook">The playbook</h2>
+<ol>
+<li><b>Stable content first:</b> tools, instructions, long documents.</li>
+<li><b>Changing content last:</b> the user's question, the time, anything per request.</li>
+<li><b>Append, never edit the beginning</b> of a conversation.</li>
+<li><b>Check the receipt.</b> Every response reports how many tokens came from the cache: <code>cache_read_input_tokens</code>
+in Claude's <code>usage</code>, <code>usage.input_tokens_details.cached_tokens</code> on OpenAI's Responses API. If it's 0 on a
+repeated request, something near the top is changing.</li>
+</ol>
+
+<h2 id="the-whole-idea-in-one-line">The whole idea in one line</h2>
+<p>Three prices, two letters. Keys and values are what every past token offers the future, so they're worth keeping; a query is
+a question asked once. The model didn't get cheaper. It stopped redoing work it had already done.</p>
+
+<h2 id="sources">Sources</h2><ul class="sources">
+<li>Vaswani et al., <a href="https://arxiv.org/abs/1706.03762">Attention Is All You Need</a> (2017): auto-regressive decoding (§3), query and key-value pairs (§3.2), Equation 1, the causal mask (§3.1)</li>
+<li>Hugging Face Transformers, <a href="https://huggingface.co/docs/transformers/en/cache_explanation">Caching</a>: the 999 / 1,000 example, "you only need the last token's query", per-layer key and value cache</li>
+<li>OpenAI, <a href="https://developers.openai.com/api/docs/guides/prompt-caching">Prompt caching guide</a>: KV tensors, retention, 1,024-token minimum, <code>cached_tokens</code></li>
+<li>Anthropic, <a href="https://platform.claude.com/docs/en/build-with-claude/prompt-caching">Prompt caching</a>: pricing table, exact-match prefixes, order, 5-minute and 1-hour lifetimes, 512-token minimum, usage fields</li>
+<li>OpenAI, <a href="https://developers.openai.com/api/docs/models/gpt-6.1-sol">GPT-6.1 Sol model page</a>: input, cache write and cache read prices</li>
+<li><a href="https://huggingface.co/openai-community/gpt2/blob/main/config.json">GPT-2 small config</a>: 12 layers, 12 heads, 768 dimensions</li>
+<li>Experiments: GPT-2 small with PyTorch and Hugging Face Transformers on a laptop CPU: cache contents, attention shapes, append and edit tests, timing with and without the cache</li>
+</ul>
+<div class="endcard"><h3>Watch the full video</h3><p>7 minutes, animated: the library analogy, the GPT-2 tests and the price list, the same story as this article.</p>
+<div class="actions"><a class="btn ytbtn" data-watch="kv-long" target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.6 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg>Watch on YouTube</a>
+<a class="btn" data-channel target="_blank" rel="noopener">Subscribe</a>
+<a class="btn" href="https://www.linkedin.com/in/rohit-kumar-singh-621818a9/" target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><path d="M20.4 20.5h-3.6v-5.6c0-1.3 0-3-1.8-3s-2.1 1.4-2.1 2.9v5.7H9.3V9h3.4v1.6h.1c.5-.9 1.6-1.8 3.4-1.8 3.6 0 4.3 2.4 4.3 5.5v6.2zM5.3 7.4a2.1 2.1 0 1 1 0-4.1 2.1 2.1 0 0 1 0 4.1zM7.1 20.5H3.5V9h3.6v11.5zM22.2 0H1.8C.8 0 0 .8 0 1.7v20.6c0 .9.8 1.7 1.8 1.7h20.4c1 0 1.8-.8 1.8-1.7V1.7C24 .8 23.2 0 22.2 0z"/></svg>Follow on LinkedIn</a></div></div>
+<a class="next" href="../sliding-window-attention/"><span>Next explainer</span><b>Sliding window attention →</b></a>
+</article>
+</div>
+
+<footer class="site"><div class="in"><span>© 2026 Rohit Kumar Singh</span>
+<span><a href="https://www.linkedin.com/in/rohit-kumar-singh-621818a9/" target="_blank" rel="noopener">LinkedIn</a> · <a href="https://github.com/gotherohit/AIML" target="_blank" rel="noopener">GitHub</a> · <a href="mailto:rohitkrsingh2000@gmail.com">Email</a></span>
+<p class="ai-note"><b>About AI assistance:</b> the articles and code on this site are developed with the help of AI tools. Explanations are refined through in-depth conversations with AI, and code is written with AI assistance. Experiments are run for real, results come from that code, and claims are checked against the cited sources.</p></div></footer>
+<script src="../../assets/site.js"></script>
+</body></html>

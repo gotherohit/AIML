@@ -7,7 +7,13 @@ const VIDEOS = {
   "vision-long":  "https://youtu.be/15drILbSCVg",               // How LLMs see images (long video)
   "vision-short": "https://youtube.com/shorts/UvJ45e8awmI",       // To an AI, this cat is 1,015 tokens
   "tokenizer-long":  "https://youtu.be/hCq71l2DSHM",            // How a tokenizer works (long video), scheduled
-  "tokenizer-short": "https://youtube.com/shorts/0-fl1HIrNxE",   // Tokenizer Short, scheduled
+  "tokenizer-short": "https://youtube.com/shorts/0-fl1HIrNxE",   // Tokenizer Short
+  "quant-long":  "https://youtu.be/6WNO_kqoZzg",                 // Quantization explained (long video)
+  "quant-short": "https://youtube.com/shorts/2BWzZdO9vzQ",       // Quantization in 6 steps
+  "kv-long":     "https://youtu.be/9LxIXveSenQ",                 // Why cache reads are 95% cheaper (long video)
+  "kv-short":    "https://youtube.com/shorts/qnKMisC82ns",       // Why cached tokens cost 95% less
+  "gguf-short":  "https://youtube.com/shorts/mGplRXdsJO4",       // 1 file, 1 whole AI model: how GGUF works
+  "chat-short":  "https://youtube.com/shorts/MR_0fXvwU3A",       // What your AI actually sees when you chat
 };
 // ------------------------------------------------------------------------------------------
 

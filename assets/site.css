@@ -173,3 +173,4 @@ footer.site .in{max-width:var(--wrap);margin:auto;padding:28px 22px;display:flex
 .yt.pending .soon{background:linear-gradient(180deg,rgba(0,0,0,0) 30%,rgba(0,0,0,.6))}
 .yt.pending .soon .label{color:var(--accent,#7c9dff);opacity:1}
 footer.site .ai-note{flex-basis:100%;margin:4px 0 0;font-size:13px;line-height:1.55;color:var(--dim)}
+.prose code,.prose pre,.prose .tbl td,code,pre{font-variant-ligatures:none;font-feature-settings:"liga" 0,"calt" 0}
