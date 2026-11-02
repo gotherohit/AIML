@@ -1,0 +1,694 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>How AI guarantees perfect JSON: structured outputs from first principles</title>
+<meta name="description" content="How structured outputs really work: schemas, grammars, the stack, token masks, llama.cpp and XGrammar, with working code and real runs.">
+<link rel="canonical" href="https://gotherohit.github.io/AIML/explainers/structured-outputs/">
+<meta property="og:type" content="article"><meta property="og:title" content="How AI guarantees perfect JSON: structured outputs from first principles">
+<meta property="og:description" content="How structured outputs really work: schemas, grammars, the stack, token masks, llama.cpp and XGrammar, with working code and real runs."><meta property="og:url" content="https://gotherohit.github.io/AIML/explainers/structured-outputs/">
+<meta property="og:image" content="https://gotherohit.github.io/AIML/images/covers/structured-outputs.jpg"><meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x2='1' y2='1'%3E%3Cstop stop-color='%2335d6c0'/%3E%3Cstop offset='1' stop-color='%23ff6a2b'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../assets/site.css"><style>:root{--accent:#e5484d;--accent2:#3fb37f}
+.prose .fig{background:#fdfcf7;border-radius:10px;padding:10px;margin:18px 0}
+.prose .fig svg{display:block;width:100%;height:auto}
+.prose .bar{display:flex;align-items:center;gap:10px;font-size:15px;margin:7px 0}
+.prose .bar .lab{width:96px;flex:none}
+.prose .bar .track{flex:1;height:20px;background:var(--bg2);border-radius:3px;overflow:hidden}
+.prose .bar .fill{height:20px;background:#8b90a0}
+.prose .bar .fill.red{background:#e5484d}
+.prose .bar .fill.ok{background:#3fb37f}
+.prose .bar .val{width:66px;flex:none;text-align:right}
+.prose .bar .no{text-decoration:line-through;color:#e5484d}
+.prose .bar.tk{margin:3px 0;font-size:14px}
+.prose .bar.tk .track,.prose .bar.tk .fill{height:14px}
+.prose .bar.tk .lab{width:74px;overflow:hidden;white-space:pre}</style>
+</head><body>
+<header class="topbar"><div class="in">
+<a class="brand" href="../../"><span class="mark">RK</span><span class="name">Rohit Kumar Singh</span></a>
+<div class="search" role="search"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 3a7.5 7.5 0 0 1 5.9 12.1l4.8 4.8-1.4 1.4-4.8-4.8A7.5 7.5 0 1 1 10.5 3zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11z"/></svg>
+<input id="q" type="search" placeholder="Search explainers" aria-label="Search the explainers" autocomplete="off" data-root="../../"><kbd>/</kbd>
+<div class="results" id="qres" role="listbox" hidden></div></div>
+<nav><a class="txt" href="../../#explainers">Explainers</a><a class="txt" href="../../#projects">Projects</a><a class="txt" href="../../#about">About</a>
+<a class="icon" data-channel target="_blank" rel="noopener" aria-label="YouTube"><svg viewBox="0 0 24 24"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.6 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg></a>
+<a class="icon" href="https://www.linkedin.com/in/rohit-kumar-singh-621818a9/" target="_blank" rel="noopener" aria-label="LinkedIn"><svg viewBox="0 0 24 24"><path d="M20.4 20.5h-3.6v-5.6c0-1.3 0-3-1.8-3s-2.1 1.4-2.1 2.9v5.7H9.3V9h3.4v1.6h.1c.5-.9 1.6-1.8 3.4-1.8 3.6 0 4.3 2.4 4.3 5.5v6.2zM5.3 7.4a2.1 2.1 0 1 1 0-4.1 2.1 2.1 0 0 1 0 4.1zM7.1 20.5H3.5V9h3.6v11.5zM22.2 0H1.8C.8 0 0 .8 0 1.7v20.6c0 .9.8 1.7 1.8 1.7h20.4c1 0 1.8-.8 1.8-1.7V1.7C24 .8 23.2 0 22.2 0z"/></svg></a>
+<a class="icon" href="https://github.com/gotherohit/AIML" target="_blank" rel="noopener" aria-label="GitHub"><svg viewBox="0 0 24 24"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.3-3.1-.2-.4-.6-1.6 0-3.2 0 0 1-.3 3.4 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.2.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.5.4.9 1.1.9 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"/></svg></a></nav>
+</div></header>
+<div class="article-head">
+<div class="crumbs"><a href="../../#explainers">Explainers</a> /</div>
+<h1>How AI guarantees perfect JSON: structured outputs from first principles</h1>
+<p class="dek">OpenAI trained a model to follow JSON formats and got to 93%. The jump to 100% didn't need a smarter model, only a checker blocking illegal tokens. Here's how that checker works, from your schema to the last token, with working code and real runs.</p>
+<div class="tags" style="margin-bottom:16px"><span class="tag">Structured outputs</span><span class="tag">Constrained decoding</span><span class="tag">XGrammar</span><span class="tag">llama.cpp</span><span class="tag">Code included</span></div>
+<div class="byline"><span class="kind deep">Deep dive</span><span>By <b>Rohit Kumar Singh</b></span><span>November 2026</span><span>40 min read</span></div>
+</div>
+<div class="videos two">
+<div class="yt" data-video="structured-long" data-soon data-label="Full video · 13 min" data-title="How AI guarantees perfect JSON"></div>
+<div class="yt vertical" data-video="structured-short" data-soon data-label="Short" data-title="How AI guarantees perfect JSON, in under 3 minutes"></div>
+</div>
+<div class="layout">
+<details class="toc"><summary>Contents</summary><ol><li><a href="#the-short-answer">The short answer</a></li><li><a href="#how-a-model-writes">How a model writes</a></li><li><a href="#from-your-schema-to-something-a-program-can-use">From your schema to something a program can use</a></li><li><a href="#the-checker-is-a-to-do-list">The checker is a to-do list</a></li><li><a href="#the-actual-code">The actual code</a></li><li><a href="#isn-t-checking-152-000-tokens-each-step-slow">Isn&#x27;t checking 152,000 tokens each step slow?</a></li><li><a href="#xgrammar-s-lists-on-a-real-example">XGrammar&#x27;s lists, on a real example</a></li><li><a href="#the-whole-journey-with-the-real-engines">The whole journey, with the real engines</a></li><li><a href="#so-why-do-we-need-the-model-at-all">So why do we need the model at all?</a></li><li><a href="#what-it-doesn-t-guarantee">What it doesn&#x27;t guarantee</a></li><li><a href="#beyond-json">Beyond JSON</a></li><li><a href="#likely-questions">Likely questions</a></li></ol></details>
+<article class="prose">
+<h2 id="the-short-answer">The short answer</h2>
+<p>The model isn't trusted to get it right. Before each token is chosen, a rule checker blocks every token that would break the format, and the model picks from what's left.</p>
+<h3>Why anyone needs this</h3>
+<p>Apps pass AI replies to code, and code is unforgiving. <code>JSON.parse</code> fails if even one extra word appears. So "Here is your JSON:" followed by perfect JSON is still a failure.</p>
+<p>The story also has a clean turning point. OpenAI first trained GPT-4o to follow schemas better and reached <b>93%</b> on its benchmark. It said that wasn't reliable enough, because model behaviour is non-deterministic. Adding the constraint took it to <b>100%</b> on its evals.</p>
+<h3>What I measured</h3>
+<p>Qwen2.5 1.5B, the same 10 simple sentences, 5 seeds each, so 50 runs per setup. A run counts as valid only if the entire reply parses as JSON.</p>
+<div class="bar"><span class="lab">Plain ask</span><span class="track"><div class="fill red" style="width:12%"></div></span><span class="val">6/50</span></div>
+<div class="bar"><span class="lab">"ONLY JSON"</span><span class="track"><div class="fill" style="width:88%"></div></span><span class="val">44/50</span></div>
+<div class="bar"><span class="lab">+ schema</span><span class="track"><div class="fill ok" style="width:100%"></div></span><span class="val">50/50</span></div>
+<p>The third bar used the same strict prompt as the second, with the schema turned on. "Valid" here means the reply parses as JSON.</p>
+<p>The 6 failures with "ONLY JSON" were all correct JSON wrapped in a markdown fence (<code>```json</code>). The plain ask also never used the exact keys: it wrote things like <code>Name</code>, <code>Location</code>, or nested everything under <code>person</code>.</p>
+<div class="box">This is one tiny model on easy sentences. It shows the idea and doesn't tell you how often big models fail.</div>
+<h3>The moment it happens</h3>
+<p>Same prompt, first token. These are the model's own scores, and they're identical with or without the schema, because the model never knows about the block:</p>
+<div class="bar"><span class="lab no">Here</span><span class="track"><div class="fill red" style="width:50.88%"></div></span><span class="val">50.9%</span></div>
+<div class="bar"><span class="lab no">```</span><span class="track"><div class="fill red" style="width:33.98%"></div></span><span class="val">34.0%</span></div>
+<div class="bar"><span class="lab"><code>{</code> + newline</span><span class="track"><div class="fill ok" style="width:11.9%"></div></span><span class="val">11.9%</span></div>
+<p>Out of <b>151,936</b> tokens the model knows, only <b>4</b> were legal as the first token: <code>{</code>, <code>{</code>+newline, <code>{</code>+2 newlines, and <code>{"</code>. All 4 open an object. The best legal one was the model's third choice.</p>
+<div class="tbl"><table><tr><th>Without schema</th><th>With schema</th></tr>
+<tr><td><code>Here is the information about Priya as a JSON object: ...</code> and it used <code>location</code></td><td><code>{ "name": "Priya", "age": 29, "city": "Pune" }</code></td></tr></table></div>
+<h2 id="how-a-model-writes">How a model writes</h2>
+<p>If you've never seen this idea, start here. A language model doesn't write a sentence in one go. It repeats one small loop: score every token it knows, pick one, add it to the text, go again. A token is a small piece of text, like <code>Here</code>, <code>{</code> or <code>Pri</code>.</p>
+<p>Filtering adds a single step to that loop, between scoring and picking:</p>
+<div class="fig"><svg viewBox="0 0 360 250" role="img" aria-label="Loop: model scores every token, checker removes illegal tokens, pick one, update position, repeat">
+<defs><marker id="a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0L9 4.5L0 9z" fill="#1d1d1f"/></marker></defs>
+<g font-family="system-ui,sans-serif" font-size="15" text-anchor="middle">
+<rect x="6" y="8" width="150" height="82" fill="#fff" stroke="#1d1d1f" stroke-width="2"/><text x="81" y="42" font-weight="700">1. Model</text><text x="81" y="66">scores 151,936</text>
+<rect x="204" y="8" width="150" height="82" fill="#fbe3e6" stroke="#c8102e" stroke-width="2"/><text x="279" y="42" font-weight="700" fill="#c8102e">2. Checker</text><text x="279" y="66">removes illegal</text>
+<rect x="204" y="150" width="150" height="82" fill="#fff" stroke="#1d1d1f" stroke-width="2"/><text x="279" y="184" font-weight="700">3. Pick</text><text x="279" y="208">one left</text>
+<rect x="6" y="150" width="150" height="82" fill="#fff" stroke="#1d1d1f" stroke-width="2"/><text x="81" y="184" font-weight="700">4. Update</text><text x="81" y="208">new position</text>
+<g fill="none" stroke="#1d1d1f" stroke-width="2" marker-end="url(#a)"><path d="M156 49H202"/><path d="M279 90V148"/><path d="M204 191H158"/><path d="M81 150V92"/></g>
+<text x="180" y="125">repeat</text></g></svg></div>
+<p>Everything else in this article is about step 2: how it knows what's illegal, how it does that quickly, and why step 1 still matters.</p>
+<h3>What a mask is</h3>
+<p>A mask is a yes or no for every token. Illegal tokens get a score of minus infinity, so their probability becomes exactly 0. Legal tokens keep their scores and are rescaled to add up to 100%. Then one is picked. Nothing inside the model changes.</p>
+
+<h2 id="from-your-schema-to-something-a-program-can-use">From your schema to something a program can use</h2>
+<h3>What a schema is</h3>
+<div class="tbl"><table><tr><th></th><th>Example</th><th>Job</th></tr>
+<tr><td><b>Data</b></td><td><code>{"name":"rohit"}</code></td><td>The actual information</td></tr>
+<tr><td><b>Schema</b></td><td>The block below</td><td>The rule for that data</td></tr></table></div>
+<p>The confusing part is that a schema is also written in JSON, so it's JSON describing JSON. Why not just send an example? Because one example can't say whether the name must always be <code>rohit</code>, whether it can be a number, whether it's optional, or whether extra fields are allowed. A schema can answer all of those. Think of it as a form template, and <code>{"name":"rohit"}</code> as one filled-in copy.</p>
+<p>A schema is a description of the reply you want, not the reply itself. JSON Schema is a standard format for writing that description, which is why these providers accept it.</p>
+<pre>{
+  "type": "object",
+  "properties": {
+    "age": { "type": "integer" }
+  },
+  "required": ["age"],
+  "additionalProperties": false
+}</pre>
+<div class="tbl"><table><tr><th>Line</th><th>Meaning</th></tr>
+<tr><td><code>"type": "object"</code></td><td>The reply is a <code>{ }</code> object</td></tr>
+<tr><td><code>"properties"</code></td><td>The fields and each one's type</td></tr>
+<tr><td><code>"required"</code></td><td>Fields that must appear</td></tr>
+<tr><td><code>"additionalProperties": false</code></td><td>No other fields allowed</td></tr></table></div>
+<p>That schema allows a reply such as <code>{"age": 29}</code>. Each provider wraps it slightly differently:</p>
+<div class="tbl"><table><tr><th>Where</th><th>Where the schema goes</th></tr>
+<tr><td>OpenAI (Responses API)</td><td><code>text.format</code> with <code>type: "json_schema"</code> and <code>strict: true</code></td></tr>
+<tr><td>Claude</td><td><code>output_config.format</code> with <code>type: "json_schema"</code></td></tr>
+<tr><td>llama.cpp server</td><td>The <code>json_schema</code> field</td></tr></table></div>
+<p>OpenAI's strict mode requires all fields to be listed as required, and both OpenAI and Claude use <code>additionalProperties: false</code> on objects. In Python, most people don't write this by hand. They define a Pydantic class, and the SDK builds the schema from it:</p>
+<pre>class Person(BaseModel):
+    age: int</pre>
+<h3>What a grammar is</h3>
+<p>A grammar is a list of rules saying what may be written. We'll use a very small one: lists of single digits, which may contain other lists. So <code>[1,2]</code> and <code>[[1,2]]</code> are fine, and <code>[1,]</code> is not.</p>
+<pre>list  ::= "[" items "]"
+items ::= num  |  num "," items  |  list
+num   ::= one digit, 0 to 9</pre>
+<div class="box"><b>Grammar or XGrammar?</b> A grammar is the general word for a set of rules like this. XGrammar is the name of one library that works with grammars. llama.cpp has its own grammar code, and doesn't use XGrammar.</div>
+<p>Read <code>::=</code> as "is made of" and <code>|</code> as "or". The first line says a list is <code>[</code>, then some items, then <code>]</code>. Notice that <code>items</code> can be a <code>list</code>, and a list contains <code>items</code>. That loop is what allows nesting.</p>
+<h3>How can text be a rule?</h3>
+<p>It can't, not by itself. Grammar text is only text, in the same way a Python file is only text until Python reads it. A program called a <b>parser</b> reads the text once and turns it into a table in memory. That table is what the checker actually uses.</p>
+<div class="fig"><svg viewBox="0 0 360 372" role="img" aria-label="Pipeline: schema, grammar text, parser, rule table, checker with stack, legal tokens"><defs><marker id="c" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8z" fill="#1d1d1f"/></marker></defs><g text-anchor="middle" font-family="system-ui,sans-serif" font-size="14"><rect x="40" y="4" width="280" height="46" fill="#fff" stroke="#1d1d1f" stroke-width="2"/><text x="180" y="24" font-weight="700">Your schema (optional)</text><text x="180" y="41" font-size="12.5">name, age, city</text><path d="M180 50V64" stroke="#1d1d1f" stroke-width="2" marker-end="url(#c)"/><rect x="40" y="66" width="280" height="46" fill="#fff" stroke="#1d1d1f" stroke-width="2"/><text x="180" y="86" font-weight="700">Grammar text</text><text x="180" y="103" font-size="12.5">list ::= "[" items "]"</text><path d="M180 112V126" stroke="#1d1d1f" stroke-width="2" marker-end="url(#c)"/><rect x="40" y="128" width="280" height="46" fill="#fbe3e6" stroke="#c8102e" stroke-width="2"/><text x="180" y="148" font-weight="700">Parser</text><text x="180" y="165" font-size="12.5">reads the text, once</text><path d="M180 174V188" stroke="#1d1d1f" stroke-width="2" marker-end="url(#c)"/><rect x="40" y="190" width="280" height="46" fill="#fff" stroke="#1d1d1f" stroke-width="2"/><text x="180" y="210" font-weight="700">Rule table</text><text x="180" y="227" font-size="12.5">data in memory, not text</text><path d="M180 236V250" stroke="#1d1d1f" stroke-width="2" marker-end="url(#c)"/><rect x="40" y="252" width="280" height="46" fill="#fff" stroke="#1d1d1f" stroke-width="2"/><text x="180" y="272" font-weight="700">Checker with stack</text><text x="180" y="289" font-size="12.5">the same program for any grammar</text><path d="M180 298V312" stroke="#1d1d1f" stroke-width="2" marker-end="url(#c)"/><rect x="40" y="314" width="280" height="46" fill="#fff" stroke="#1d1d1f" stroke-width="2"/><text x="180" y="334" font-weight="700">Legal tokens</text><text x="180" y="351" font-size="12.5">applied to the model's scores</text></g></svg></div>
+<p>So there are 2 separate things here. The <b>grammar</b> is data: you write it, or it's generated from your schema. <b>llama.cpp and XGrammar</b> are programs that accept any grammar. They contain nothing about <code>list</code> or <code>items</code>. Those names mean nothing to the engine, and renaming <code>items</code> to <code>banana</code> changes nothing.</p>
+<p>The parser's job is simple. Take this line:</p>
+<pre>list ::= "[" items "]"</pre>
+<div class="tbl"><table><tr><th>It reads</th><th>Which is</th><th>It stores</th></tr>
+<tr><td><code>list ::=</code></td><td>A rule name</td><td>A new table entry</td></tr>
+<tr><td><code>"["</code></td><td>Quoted, so exact text</td><td>A character test for <code>[</code></td></tr>
+<tr><td><code>items</code></td><td>No quotes, so a rule name</td><td>A link to <code>items</code></td></tr>
+<tr><td><code>"]"</code></td><td>Quoted, so exact text</td><td>A character test for <code>]</code></td></tr></table></div>
+<p>That quote-or-no-quote difference is how a rule name is told apart from real text. <code>|</code> starts another option. This is the real table my parser built, with <code>CHAR</code> meaning a character test:</p>
+<pre>root  : [ list ]
+list  : [ CHAR, items, CHAR ]
+items : [ num ]  or  [ num, CHAR, items ]  or  [ list ]
+num   : [ CHAR ]</pre>
+<p>Now the earlier sections connect. When the stack replaces <code>items</code> with its options, it's reading this table. llama.cpp does the same, with numbers in place of names. Its table stores entries such as <code>CHAR</code>, <code>RULE_REF</code>, <code>ALT</code> and <code>END</code>, so <code>list</code> becomes: <code>CHAR [</code>, <code>RULE_REF items</code>, <code>CHAR ]</code>, <code>END</code>. XGrammar likewise converts the grammar into its own structure, a pushdown automaton, and then builds its saved lists from that.</p>
+<p>The same parser and checker run a completely different grammar with no code change. Given <code>answer ::= "yes" | "no"</code>, they accepted <code>yes</code> and rejected <code>maybe</code>.</p>
+<h3>Who writes the grammar from a schema?</h3>
+<p>Another small program, called a <b>converter</b>. You give a schema, and it walks through each field and writes grammar text. The full chain is:</p>
+<pre>Your schema  &rarr;  CONVERTER  &rarr;  grammar text  &rarr;  PARSER  &rarr;  rule table</pre>
+<p>Writing a schema is optional. If you write a grammar yourself, you skip the converter. In llama.cpp the converter is <code>common/json-schema-to-grammar.cpp</code>. In XGrammar you call <code>compile_json_schema</code>, or <code>compile_grammar</code> if you have your own grammar. For OpenAI, it happens on their servers when you send a schema.</p>
+<p>I wrote a tiny converter to show the logic. Given required fields <code>name</code> (string) and <code>age</code> (integer), it wrote this:</p>
+<pre>root ::= object
+object ::= "{" "name:" string "," "age:" integer "}"
+string ::= "'" chars "'"
+chars ::= char | char chars
+char ::= [a-zA-Z]
+integer ::= digit | digit integer
+digit ::= [0-9]</pre>
+<p>Look at the second line. Keys become exact quoted text, and each value's type becomes a link to a shared rule. That's why the keys you listed are strict and values stay open within their type. Run through the parser and checker, it gave:</p>
+<div class="tbl"><table><tr><th>Text</th><th>Result</th><th>Why</th></tr>
+<tr><td><code>{name:'Priya',age:29}</code></td><td>Accepted</td><td>Matches</td></tr>
+<tr><td><code>{age:29,name:'Priya'}</code></td><td>Rejected</td><td>Wrong order</td></tr>
+<tr><td><code>{name:29,age:29}</code></td><td>Rejected</td><td>Wrong type</td></tr>
+<tr><td><code>{city:'Pune',age:29}</code></td><td>Rejected</td><td>Wrong key</td></tr></table></div>
+<h2 id="the-checker-is-a-to-do-list">The checker is a to-do list</h2>
+<p>Forget code for a moment. Imagine one sticky note that lists what still has to be written, with the next item at the top. That note is the checker's only memory. There's just one thing on it: <b>what's still to do</b>.</p>
+<p>It follows 2 simple moves, always at the top:</p>
+<ul><li><b>The top is a rule name:</b> replace it with what that rule is made of.</li>
+<li><b>The top is a real character:</b> the next character written must match it, then you cross it off.</li></ul>
+<p>Programmers call this a <b>stack</b>. Think of a pile of plates: you only ever add to the top or take from the top. Adding is called a <b>push</b> and taking off is a <b>pop</b>.</p>
+<h3>Why the stack grows</h3>
+<p>Say <code>[</code> is already written, so the note says <code>items</code>, then <code>]</code>. Now the next character is a second <code>[</code>. The red box is the top, the only item being worked on:</p>
+<div class="fig"><svg viewBox="0 0 360 170" role="img" aria-label="Writing the second bracket: the top rule is swapped twice, then the bracket is crossed off"><defs><marker id="b" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8z" fill="#1d1d1f"/></marker></defs><g text-anchor="middle" font-family="system-ui,sans-serif"><text x="40" y="16" font-size="12" font-weight="700">1. Before</text><rect x="14" y="104" width="52" height="22" fill="#fff" stroke="#1d1d1f" stroke-width="1.6"/><text x="40.0" y="120" font-size="12" font-weight="400" font-family="Consolas,monospace">]</text><rect x="14" y="80" width="52" height="22" fill="#fbe3e6" stroke="#c8102e" stroke-width="1.6"/><text x="40.0" y="96" font-size="12" font-weight="700" font-family="Consolas,monospace">items</text><text x="40" y="150" font-size="10.5">Top is a rule</text><path d="M68 100H100" stroke="#1d1d1f" stroke-width="1.6" marker-end="url(#b)"/><text x="130" y="16" font-size="12" font-weight="700">2. Swap</text><rect x="104" y="104" width="52" height="22" fill="#fff" stroke="#1d1d1f" stroke-width="1.6"/><text x="130.0" y="120" font-size="12" font-weight="400" font-family="Consolas,monospace">]</text><rect x="104" y="80" width="52" height="22" fill="#fbe3e6" stroke="#c8102e" stroke-width="1.6"/><text x="130.0" y="96" font-size="12" font-weight="700" font-family="Consolas,monospace">list</text><text x="130" y="150" font-size="10.5">items can be list</text><path d="M158 100H190" stroke="#1d1d1f" stroke-width="1.6" marker-end="url(#b)"/><text x="220" y="16" font-size="12" font-weight="700">3. Swap</text><rect x="194" y="104" width="52" height="22" fill="#fff" stroke="#1d1d1f" stroke-width="1.6"/><text x="220.0" y="120" font-size="12" font-weight="400" font-family="Consolas,monospace">]</text><rect x="194" y="80" width="52" height="22" fill="#fff" stroke="#1d1d1f" stroke-width="1.6"/><text x="220.0" y="96" font-size="12" font-weight="400" font-family="Consolas,monospace">]</text><rect x="194" y="56" width="52" height="22" fill="#fff" stroke="#1d1d1f" stroke-width="1.6"/><text x="220.0" y="72" font-size="12" font-weight="400" font-family="Consolas,monospace">items</text><rect x="194" y="32" width="52" height="22" fill="#fbe3e6" stroke="#c8102e" stroke-width="1.6"/><text x="220.0" y="48" font-size="12" font-weight="700" font-family="Consolas,monospace">[</text><text x="220" y="150" font-size="10.5">list is [ items ]</text><path d="M248 100H280" stroke="#1d1d1f" stroke-width="1.6" marker-end="url(#b)"/><text x="310" y="16" font-size="12" font-weight="700">4. Cross off</text><rect x="284" y="104" width="52" height="22" fill="#fff" stroke="#1d1d1f" stroke-width="1.6"/><text x="310.0" y="120" font-size="12" font-weight="400" font-family="Consolas,monospace">]</text><rect x="284" y="80" width="52" height="22" fill="#fff" stroke="#1d1d1f" stroke-width="1.6"/><text x="310.0" y="96" font-size="12" font-weight="400" font-family="Consolas,monospace">]</text><rect x="284" y="56" width="52" height="22" fill="#fbe3e6" stroke="#c8102e" stroke-width="1.6"/><text x="310.0" y="72" font-size="12" font-weight="700" font-family="Consolas,monospace">items</text><text x="310" y="150" font-size="10.5">[ matches</text></g></svg></div>
+<p>Look at the <code>]</code> at the bottom of frame 1. It never moved. The new work went on top of it, and it waits underneath until everything above is finished. That waiting is the whole trick, and it's how the checker remembers that an outer list is still open.</p>
+<h3>The whole journey</h3>
+<p>Here's that same stack through all of <code>[[1,2]]</code>. These aren't separate notes. It's one note, shown once per character. The label under each card is what's been written so far:</p>
+<div class="fig"><svg viewBox="0 0 360 360" role="img" aria-label="The stack at each character of [[1,2]]: it grows as lists open, then shrinks to empty"><g text-anchor="middle" font-family="system-ui,sans-serif"><rect x="2" y="2" width="86" height="172" fill="#fff" stroke="#cfcabc"/><text x="45.0" y="18" font-size="12" font-weight="700">Start</text><rect x="20" y="112" width="50" height="22" fill="#fbe3e6" stroke="#c8102e" stroke-width="1.6"/><text x="45.0" y="128" font-size="12" font-weight="700" font-family="Consolas,monospace">list</text><text x="45.0" y="158" font-size="12" font-family="Consolas,monospace">(nothing)</text><rect x="92" y="2" width="86" height="172" fill="#fff" stroke="#cfcabc"/><text x="135.0" y="18" font-size="12" font-weight="700">Write [</text><rect x="110" y="112" width="50" height="22" fill="#fff" stroke="#1d1d1f" stroke-width="1.6"/><text x="135.0" y="128" font-size="12" font-weight="400" font-family="Consolas,monospace">]</text><rect x="110" y="88" width="50" height="22" fill="#fbe3e6" stroke="#c8102e" stroke-width="1.6"/><text x="135.0" y="104" font-size="12" font-weight="700" font-family="Consolas,monospace">items</text><text x="135.0" y="158" font-size="12" font-family="Consolas,monospace">[</text><rect x="182" y="2" width="86" height="172" fill="#fff" stroke="#cfcabc"/><text x="225.0" y="18" font-size="12" font-weight="700">Write [</text><rect x="200" y="112" width="50" height="22" fill="#fff" stroke="#1d1d1f" stroke-width="1.6"/><text x="225.0" y="128" font-size="12" font-weight="400" font-family="Consolas,monospace">]</text><rect x="200" y="88" width="50" height="22" fill="#fff" stroke="#1d1d1f" stroke-width="1.6"/><text x="225.0" y="104" font-size="12" font-weight="400" font-family="Consolas,monospace">]</text><rect x="200" y="64" width="50" height="22" fill="#fbe3e6" stroke="#c8102e" stroke-width="1.6"/><text x="225.0" y="80" font-size="12" font-weight="700" font-family="Consolas,monospace">items</text><text x="225.0" y="158" font-size="12" font-family="Consolas,monospace">[[</text><rect x="272" y="2" width="86" height="172" fill="#fff" stroke="#cfcabc"/><text x="315.0" y="18" font-size="12" font-weight="700">Write 1</text><rect x="275" y="112" width="37" height="22" fill="#fff" stroke="#1d1d1f" stroke-width="1.6"/><text x="293.5" y="128" font-size="10" font-weight="400" font-family="Consolas,monospace">]</text><rect x="275" y="88" width="37" height="22" fill="#fff" stroke="#1d1d1f" stroke-width="1.6"/><text x="293.5" y="104" font-size="10" font-weight="400" font-family="Consolas,monospace">]</text><rect x="275" y="64" width="37" height="22" fill="#fff" stroke="#1d1d1f" stroke-width="1.6"/><text x="293.5" y="80" font-size="10" font-weight="400" font-family="Consolas,monospace">items</text><rect x="275" y="40" width="37" height="22" fill="#fbe3e6" stroke="#c8102e" stroke-width="1.6"/><text x="293.5" y="56" font-size="10" font-weight="700" font-family="Consolas,monospace">,</text><text x="315" y="128" font-size="10">or</text><rect x="323" y="112" width="32" height="22" fill="#fff" stroke="#1d1d1f" stroke-width="1.6"/><text x="339.0" y="128" font-size="10" font-weight="400" font-family="Consolas,monospace">]</text><rect x="323" y="88" width="32" height="22" fill="#fbe3e6" stroke="#c8102e" stroke-width="1.6"/><text x="339.0" y="104" font-size="10" font-weight="700" font-family="Consolas,monospace">]</text><text x="315.0" y="158" font-size="12" font-family="Consolas,monospace">[[1</text><rect x="2" y="180" width="86" height="172" fill="#fff" stroke="#cfcabc"/><text x="45.0" y="196" font-size="12" font-weight="700">Write ,</text><rect x="20" y="290" width="50" height="22" fill="#fff" stroke="#1d1d1f" stroke-width="1.6"/><text x="45.0" y="306" font-size="12" font-weight="400" font-family="Consolas,monospace">]</text><rect x="20" y="266" width="50" height="22" fill="#fff" stroke="#1d1d1f" stroke-width="1.6"/><text x="45.0" y="282" font-size="12" font-weight="400" font-family="Consolas,monospace">]</text><rect x="20" y="242" width="50" height="22" fill="#fbe3e6" stroke="#c8102e" stroke-width="1.6"/><text x="45.0" y="258" font-size="12" font-weight="700" font-family="Consolas,monospace">items</text><text x="45.0" y="336" font-size="12" font-family="Consolas,monospace">[[1,</text><rect x="92" y="180" width="86" height="172" fill="#fff" stroke="#cfcabc"/><text x="135.0" y="196" font-size="12" font-weight="700">Write 2</text><rect x="95" y="290" width="37" height="22" fill="#fff" stroke="#1d1d1f" stroke-width="1.6"/><text x="113.5" y="306" font-size="10" font-weight="400" font-family="Consolas,monospace">]</text><rect x="95" y="266" width="37" height="22" fill="#fff" stroke="#1d1d1f" stroke-width="1.6"/><text x="113.5" y="282" font-size="10" font-weight="400" font-family="Consolas,monospace">]</text><rect x="95" y="242" width="37" height="22" fill="#fff" stroke="#1d1d1f" stroke-width="1.6"/><text x="113.5" y="258" font-size="10" font-weight="400" font-family="Consolas,monospace">items</text><rect x="95" y="218" width="37" height="22" fill="#fbe3e6" stroke="#c8102e" stroke-width="1.6"/><text x="113.5" y="234" font-size="10" font-weight="700" font-family="Consolas,monospace">,</text><text x="135" y="306" font-size="10">or</text><rect x="143" y="290" width="32" height="22" fill="#fff" stroke="#1d1d1f" stroke-width="1.6"/><text x="159.0" y="306" font-size="10" font-weight="400" font-family="Consolas,monospace">]</text><rect x="143" y="266" width="32" height="22" fill="#fbe3e6" stroke="#c8102e" stroke-width="1.6"/><text x="159.0" y="282" font-size="10" font-weight="700" font-family="Consolas,monospace">]</text><text x="135.0" y="336" font-size="12" font-family="Consolas,monospace">[[1,2</text><rect x="182" y="180" width="86" height="172" fill="#fff" stroke="#cfcabc"/><text x="225.0" y="196" font-size="12" font-weight="700">Write ]</text><rect x="200" y="290" width="50" height="22" fill="#fbe3e6" stroke="#c8102e" stroke-width="1.6"/><text x="225.0" y="306" font-size="12" font-weight="700" font-family="Consolas,monospace">]</text><text x="225.0" y="336" font-size="12" font-family="Consolas,monospace">[[1,2]</text><rect x="272" y="180" width="86" height="172" fill="#fff" stroke="#cfcabc"/><text x="315.0" y="196" font-size="12" font-weight="700">Write ]</text><text x="315.0" y="300" font-size="12" font-weight="700" fill="#16794c">empty: done</text><text x="315.0" y="336" font-size="12" font-family="Consolas,monospace">[[1,2]]</text></g></svg></div>
+<p>The stack rises as lists open, then falls to empty as they close. Empty means finished, which is why the text can't stop early: if anything is left on the stack, it isn't done. It also can't count brackets wrongly, because each <code>[</code> leaves its own <code>]</code> waiting. A pure regular expression has no such pile, so it can't check nesting to any depth.</p>
+<p>After a digit there are 2 cards marked "or". That's because the rule says a number may be followed by a comma or may end the list, and the checker can't know which yet. So it keeps 2 notes, and the next character removes the one that doesn't match. In the card after the <code>]</code>, only one note survives.</p>
+<h3>What's on the note, and what isn't</h3>
+<p>Here's the same journey as a table. Only the middle column is stored. Each row is the note at one moment, so the checker holds only the current row and has no history of earlier ones.</p>
+<div class="tbl"><table><tr><th>Written</th><th>The note (stored)</th><th>Allowed next (worked out)</th></tr><tr><td><code>[</code></td><td><code>items ]</code></td><td><code>0 1 2 3 4 5 6 7 8 9 [</code></td></tr><tr><td><code>[[</code></td><td><code>items ] ]</code></td><td><code>0 1 2 3 4 5 6 7 8 9 [</code></td></tr><tr><td><code>[[1</code></td><td><code>, items ] ]   or   ] ]</code></td><td><code>, ]</code></td></tr><tr><td><code>[[1,</code></td><td><code>items ] ]</code></td><td><code>0 1 2 3 4 5 6 7 8 9 [</code></td></tr><tr><td><code>[[1,2</code></td><td><code>, items ] ]   or   ] ]</code></td><td><code>, ]</code></td></tr><tr><td><code>[[1,2]</code></td><td><code>]</code></td><td><code>]</code></td></tr><tr><td><code>[[1,2]]</code></td><td><code>(empty, done)</code></td><td><code>nothing</code></td></tr></table></div>
+<p><b>"Allowed next" is never stored.</b> It's worked out from the top of the note when needed. If the top is <code>]</code>, only <code>]</code> is allowed. If the top is the rule <code>items</code>, you expand it and see a digit or <code>[</code>. It's in the table just to help you read it, and it's printed by the code in the next part.</p>
+<h3>Who creates the stack?</h3>
+<p>The checker program creates it when a request starts, beginning with one note holding the root rule. The rule table and saved lists are built once and shared, because they describe the grammar. Each reply gets its own stack, because it tracks where that reply has got to.</p>
+<h3>Does the stack really hold every character?</h3>
+<p>Not in real engines. My tables and toy code spell out every item to keep them readable. In llama.cpp, the stack holds pointers: bookmarks into the rule table. There's one bookmark per open rule, not one per character. The letters of <code>age</code> stay in the table, and the bookmark just slides along them:</p>
+<div class="tbl"><table><tr><th>About to write</th><th>Toy note</th><th>Real stack (top first)</th></tr>
+<tr><td><code>a</code></td><td><code>a g e " space : ...</code></td><td>age-kv, at <code>a</code>; root, at the <code>space</code> after age-kv</td></tr>
+<tr><td><code>g</code></td><td><code>g e " space : ...</code></td><td>age-kv, at <code>g</code>; root, unchanged</td></tr></table></div>
+<p>So the stack is 2 entries deep here, however long the key is. Matching a character moves the top bookmark to the next entry. When a rule ends, its bookmark is removed, and the one below takes over. The idea is the same as the sticky note, only stored more compactly.</p>
+<h2 id="the-actual-code">The actual code</h2>
+<p>This is the complete checker, comments included. It runs, and with a small wrapper it produced the toy measurements below. Anything labelled llama.cpp or XGrammar came from those engines. A note is a Python tuple with the top of the stack first, so <code>stack[0]</code> is the top. One addition you didn't see on the sticky note: the code puts an <code>END</code> marker after each rule, so it can tell where a rule finished. The speed tricks rely on that.</p>
+<pre># A tiny grammar checker, small enough to read in one sitting.
+#
+# THE IDEA
+# A &quot;note&quot; is the list of things still to be written. Its first item is the
+# top of the stack: the very next thing we must deal with.
+#
+# A note can hold 3 kinds of item:
+#   a rule name, like &quot;items&quot;    -&gt; must be replaced by what the rule is made of
+#   a terminal, a small function -&gt; tests 1 real character, True if it matches
+#   END                          -&gt; marks where a rule finished
+#
+# Example: the note (&quot;items&quot;, &quot;]&quot;) means
+# &quot;write some items, then write a closing bracket&quot;.
+
+END = &quot;&lt;end of rule&gt;&quot;
+
+
+def lit(text):
+    &quot;&quot;&quot;Turn exact text into terminals, one per character.
+
+    lit(&quot;[&quot;) gives one terminal that only accepts &quot;[&quot;.
+    want=ch freezes the character, so each terminal remembers its own one.
+    &quot;&quot;&quot;
+    return [(lambda c, want=ch: c == want) for ch in text]
+
+
+def expand(stack, rules):
+    &quot;&quot;&quot;Rewrite a note until a real character test is on top.
+
+    A rule can have several options, so 1 note can become several notes.
+    That&#x27;s why this returns a list of notes, not one note.
+    &quot;&quot;&quot;
+    # An empty note means everything has been written. Nothing to rewrite.
+    if not stack:
+        return [stack]
+
+    # Split the note into its top item and everything underneath.
+    top, rest = stack[0], stack[1:]
+
+    # A rule just finished. Remove the marker and look at what&#x27;s underneath.
+    if top == END:
+        return expand(rest, rules)
+
+    # The top item is a rule name. Swap it for each of its options.
+    if isinstance(top, str):
+        out = []
+        for option in rules[top]:
+            # New note = this option on top, then the marker, then the old rest.
+            # This is the PUSH: the note gets taller, and &quot;rest&quot; waits underneath.
+            new_note = tuple(option) + (END,) + rest
+            # The option may itself start with a rule, so keep rewriting.
+            out += expand(new_note, rules)
+        return out
+
+    # The top item is a terminal, so this note is ready for a character.
+    return [stack]
+
+
+def step(stacks, ch, rules):
+    &quot;&quot;&quot;Feed in 1 character. Returns the notes that are still alive.&quot;&quot;&quot;
+    out = []
+    for s in stacks:
+        # s must not be empty (nothing more is allowed once it&#x27;s finished),
+        # and its top terminal must accept this character.
+        if s and s[0](ch):
+            # This is the POP: s[1:] crosses off the top item.
+            # Then rewrite, in case a rule is now on top.
+            out += expand(s[1:], rules)
+        # A note that fails is simply not copied, so that future is dropped.
+    return out
+
+
+def start(rules):
+    &quot;&quot;&quot;The first note: everything is still to do, starting from the root rule.&quot;&quot;&quot;
+    return expand((&quot;root&quot;,), rules)
+
+
+def token_ok(stacks, piece, rules):
+    &quot;&quot;&quot;Is this whole token legal right now?
+
+    Tokens can be several characters, so walk them one at a time.
+    This works on copies: the real notes change only when a token is chosen.
+    &quot;&quot;&quot;
+    for ch in piece:
+        stacks = step(stacks, ch, rules)
+        # No note survived this character, so the token is illegal.
+        if not stacks:
+            return False
+    # Every character had a valid move.
+    return True</pre>
+<p>There are only 3 ideas:</p>
+<ul><li><code>expand</code> rewrites the note until a real character is on top, making one note per option.</li>
+<li><code>step</code> feeds in one character and keeps only the notes that accept it.</li>
+<li><code>token_ok</code> feeds in a token's characters one by one. If no note survives, the token is illegal.</li></ul>
+<p>That last function is the answer to a common worry: tokens don't line up with rules. The token <code>",</code> ends a string and starts the next part, and the code doesn't care, because it only ever sees characters.</p>
+<div class="box">Is this toy correct? I gave it the same schema as the real demo, in the same shape as the grammar llama.cpp printed, and ran it on my model's real vocabulary. It found the same 4 legal first tokens that llama.cpp did. It's for teaching: it skips some details such as <code>\u</code> escapes and whitespace limits.</div>
+<h3>One full turn, step by step</h3>
+<p>Here's the note <code>items ]</code> when <code>[</code> arrives. <code>items</code> has 3 options, so the checker expands all of them at once and keeps whichever matches:</p>
+<div class="tbl"><table><tr><th>Option for <code>items</code></th><th>Note after expanding</th><th>When <code>[</code> arrives</th></tr>
+<tr><td><code>num</code></td><td><code>digit ]</code></td><td>Dropped</td></tr>
+<tr><td><code>num , items</code></td><td><code>digit , items ]</code></td><td>Dropped</td></tr>
+<tr><td><code>list</code></td><td><code>[ items ] ]</code></td><td><b>Survives</b>, becomes <code>items ] ]</code></td></tr></table></div>
+<p>So <code>items</code> was effectively replaced by <code>items ]</code>, with the original <code>]</code> still underneath. If <code>5</code> had arrived instead, the first 2 notes would survive and the third would be dropped. That's where the "or" cards come from.</p>
+<p>Three details keep this straight:</p>
+<ul><li><b>It works per character, not per token.</b> A token like <code>[[</code> runs this twice.</li>
+<li><b>Tokens are tested on copies.</b> The checker tries many tokens without touching the real note.</li>
+<li><b>The real note changes once a turn,</b> when the one chosen token is fed through it.</li></ul>
+<p>In the code, expansion happens straight after each character, so the note already has real characters on top before the next one arrives.</p>
+<h3>What "or" really means</h3>
+<p>When a rule has options, the checker follows all of them at once, like trying 2 roads to the same place. A token is legal if <b>at least one</b> path survives. Take <code>29</code> with this rule:</p>
+<pre>integer ::= [0-9]  |  [0-9] integer</pre>
+<div class="tbl"><table><tr><th>Character</th><th>Path A: 1 digit, then <code>}</code></th><th>Path B: digit, then more</th></tr>
+<tr><td><code>2</code></td><td>Fits</td><td>Fits</td></tr>
+<tr><td><code>9</code></td><td>Not <code>}</code>, this path dies</td><td>Fits, still alive</td></tr></table></div>
+<p>One path survived, so <code>29</code> is legal. With <code>2x</code> both paths die, so it's illegal. A dead path isn't a rejected token.</p>
+
+<h2 id="isn-t-checking-152-000-tokens-each-step-slow">Isn't checking 152,000 tokens each step slow?</h2>
+<p>First, the order. The model scores all its tokens, and only then does the checker act. The model doesn't know about the rules, which is why <code>Here</code> still scored 51%. The checker doesn't change how the model scored the legal tokens. It only sets the illegal ones to minus infinity before the pick:</p>
+<div class="tbl"><table><tr><th>Token</th><th>Model's score</th><th>Checker</th><th>Result</th></tr>
+<tr><td><code>Here</code></td><td>50.9%</td><td>Illegal</td><td>Removed</td></tr>
+<tr><td><code>```</code></td><td>34.0%</td><td>Illegal</td><td>Removed</td></tr>
+<tr><td><code>{</code> + newline</td><td>11.9%</td><td>Legal</td><td><b>Picked</b></td></tr></table></div>
+<p>Second, it isn't every token times every character. Each token is checked one character at a time, and it stops at the first bad one. If only <code>{</code> is allowed, <code>Here</code> takes 1 test because <code>H</code> fails, so <code>ere</code> is never looked at. <code>{"</code> takes 2.</p>
+<p>Yes, if you do it the simple way. Here's the code above, testing every token at every step of one real reply, in plain Python:</p>
+<div class="tbl"><table><tr><th>Position</th><th>Tokens legal</th><th>Full scan</th></tr><tr><td>Very start</td><td>4</td><td>53 ms</td></tr><tr><td>After a key</td><td>13</td><td>56 ms</td></tr><tr><td>Before a string</td><td>394</td><td>196 ms</td></tr><tr><td>Inside a string</td><td>147,240</td><td>6,449 ms</td></tr><tr><td>Second digit</td><td>14</td><td>91 ms</td></tr></table></div>
+<p>Median 326 ms, worst 6,958 ms. My laptop's model takes about 50 ms per token, so in Python this checker would be far slower than the AI itself.</p>
+<p>The table has a clue. The scan is quick when few tokens are legal, because almost every token fails on its first character and is dropped at once. It's slow inside a string, because almost every token is legal and must be walked to its last character.</p>
+<h3>Trick 1, llama.cpp: check the model's pick first</h3>
+<p>Think of a club with a guest list. Instead of reading the whole list every time, the door staff check only the person who walks up, and go through the full list only if that person is refused.</p>
+<ol><li>The model scores all tokens.</li>
+<li>Pick one token, ignoring the rules for now.</li>
+<li>Check only that token.</li>
+<li>If it's legal, keep it. That took 1 check.</li>
+<li>If it's illegal, check every token, remove the illegal ones, and pick again.</li></ol>
+<p><b>Case A, the pick is legal.</b> Say the model picks <code>2</code> where a digit is allowed. We're done after 1 check.</p>
+<p><b>Case B, the very start.</b> The model picks <code>Here</code>, which is illegal. Now every token is checked, 4 are found legal, and the pick is repeated.</p>
+<p>So it's cheap when the model's pick is legal, and costs a full scan when it isn't. Legality always comes from the stack, and the stack decides how many tokens pass:</p>
+<div class="tbl"><table><tr><th>Stack top says</th><th>Tokens legal</th><th>Model's pick</th><th>Full scan</th></tr>
+<tr><td>Must be <code>{</code></td><td>4</td><td>Often illegal</td><td>Needed, but quick (53 ms)</td></tr>
+<tr><td>Inside a string: almost any character</td><td>147,240 of 151,643</td><td>Almost always legal</td><td>Skipped, and it was the slow one (over 5,000 ms)</td></tr></table></div>
+<p>So the trick pays off most inside strings: that's where a full scan would be slowest, and where it's rarely needed. llama.cpp is also written in C++, which is far faster than my Python. On my laptop the difference didn't show up at all:</p>
+<div class="tbl"><table><tr><th>llama.cpp, 120 tokens, median of 5 runs</th><th>Per token</th></tr>
+<tr><td>No grammar</td><td>49.7 ms</td></tr><tr><td>Any-JSON grammar</td><td>48.9 ms</td></tr></table></div>
+<div class="box">That's on a slow laptop CPU, where the model step takes so long that it hides the checker. The 2 runs also wrote different text, so don't read this as the grammar being faster. A big GPU changes the picture: the model step is far shorter, many users run together, and the checker runs on the CPU. In the XGrammar paper's serving tests in SGLang, Llama-3.1 8B took 44.2 ms per token with a different checker, Outlines, and 6.8 ms with XGrammar.</div><div class="tbl"><table><tr><th></th><th>Pick is legal</th><th>Pick is illegal</th></tr>
+<tr><td>Example</td><td>Picks <code>2</code></td><td>Picks <code>person</code></td></tr>
+<tr><td>Then</td><td><b>Done, no mask at all</b></td><td>Check every token, set illegal ones to minus infinity</td></tr>
+<tr><td>Next</td><td>Update the stack</td><td>Pick again, guaranteed legal, then update the stack</td></tr></table></div>
+
+<h3>Trick 2, XGrammar: work out the answers in advance</h3>
+<p>This is the part that sounds impossible. If it can compute the tokens in advance, what's left for the model?</p>
+<p>The key is what's being computed. XGrammar doesn't work out <b>which token comes next</b>. It works out <b>which tokens would be legal at each position in the rules</b>. It's a lookup table, like a parking sign that tells you which vehicles may enter, not which one will arrive.</p>
+<p>This works because a grammar has a limited number of positions, even though it can produce endless outputs. Our schema has just 23 positions in that reply, and the position "inside a string" is the same whether the string is <code>Priya</code> or <code>Pune</code>. So you test the vocabulary once per position, save the result, and reuse it. Most of that happens before generation starts.</p>
+<div class="fig"><svg viewBox="0 0 360 190" role="img" aria-label="At the position inside a string, tokens fall into three groups: always legal, never legal, and must check live">
+<g font-family="system-ui,sans-serif" font-size="15" text-anchor="middle">
+<text x="180" y="20" font-weight="700">Position: inside a string</text>
+<rect x="6" y="34" width="348" height="52" fill="#d8ecdf" stroke="#16794c" stroke-width="2"/><text x="180" y="66"><tspan font-weight="700" fill="#16794c">Always legal:</tspan> plain text tokens</text>
+<rect x="6" y="92" width="170" height="52" fill="#fbe3e6" stroke="#c8102e" stroke-width="2"/><text x="91" y="124"><tspan font-weight="700" fill="#c8102e">Never legal</tspan></text>
+<rect x="184" y="92" width="170" height="52" fill="#fff" stroke="#1d1d1f" stroke-width="2" stroke-dasharray="5 3"/><text x="269" y="124"><tspan font-weight="700">Check live</tspan></text>
+<text x="180" y="172" font-size="14">Sorted once, ahead of time. Boxes not to scale.</text></g></svg></div>
+<p>In the club picture, this is the guest list prepared before the night starts. Then, at each step of generating:</p>
+<ol><li>See which position the stack top is at.</li>
+<li>Look up the saved groups for that position.</li>
+<li>Check only the "check live" group against the full stack.</li>
+<li>Combine the results into a list of illegal tokens, the mask.</li>
+<li>Remove those tokens from the model's scores and pick one.</li></ol>
+<p>There's no retry, because the pick always happens after the mask is applied.</p>
+<p><b>Why can't everything be precomputed?</b> Because of tokens that run past the end of the current rule. Take the token <code>]]</code>, which closes 2 lists at once:</p>
+<div class="tbl"><table><tr><th>Written so far</th><th>Is <code>]]</code> legal?</th><th>Why</th></tr>
+<tr><td><code>[[1</code></td><td>Yes</td><td>2 lists are open</td></tr>
+<tr><td><code>[1</code></td><td>No</td><td>Only 1 is open</td></tr></table></div>
+<p>Both positions look the same at the top of the note: just after a digit. The answer depends on what's deeper in the note, so that token has to be checked live. XGrammar calls these <b>context-dependent</b> tokens. The tricks are to keep that group tiny, and to reject early whatever can't follow the rule anyway. The paper calls that <b>context expansion</b>, and my toy does a rough version of it.</p>
+<div class="box">"Inside a string" here means a free-text value, like the name. Keys are strings too, but your schema spells them out exactly: <code>"\"age\""</code>. So inside a key the rules are strict. After <code>"a</code> only 2 tokens were legal, against 147,240 inside a value.</div>
+<p>The schema has a neat example too. The token <code>",</code> ends a string and adds a comma. After the <code>name</code> string that's legal, because <code>age</code> follows. After the <code>city</code> string it's illegal, because only <code>}</code> can follow. Both are the same position, "inside a string", so the saved list can't settle it. <code>Pri</code> is legal in both, so the saved list settles that one.</p>
+<p>I built this into the toy and ran the same reply. The fast result matched the full scan at every step:</p>
+<div class="tbl"><table><tr><th></th><th>Full scan</th><th>Precomputed</th></tr>
+<tr><td>Tokens tested live, worst step</td><td>151,643</td><td>2,419</td></tr>
+<tr><td>Median time per step</td><td>326 ms</td><td>9.7 ms</td></tr>
+<tr><td>Worst time per step</td><td>6,958 ms</td><td>148 ms</td></tr>
+<tr><td>Up-front work</td><td>None</td><td>11 s, once</td></tr></table></div>
+<p>That up-front work is the "first request is slower" that OpenAI and Anthropic both mention. The real engine does better than my toy. (The XGrammar-2 post from May 2026 keeps the same core idea, and adds features such as Structural Tags.) The paper reports under 1% of tokens context-dependent (1,134 of 128k, Llama-3.1 with JSON), and compact storage cut memory from 160 MB to 0.46 MB. It also runs the checker on the CPU at the same time as the GPU works on the model, so one doesn't wait for the other.</p>
+<h3>What exactly is a position?</h3>
+<p>A position isn't a token, and it isn't a character of the reply. It's <b>a place in the rule</b>, like a bookmark between 2 items. Here dots mark them:</p>
+<pre>list : &bull; "[" &bull; items &bull; "]" &bull;</pre>
+<p>Each exact character in a rule has its own place, because the checker must know how much is spelled so far. A character class such as "any letter" is a single place that loops back to itself. So in this rule:</p>
+<pre>object ::= "{" "name:" string ...
+string ::= "'" chars "'"</pre>
+<div class="tbl"><table><tr><th>Part of the reply</th><th>Characters</th><th>Positions</th></tr>
+<tr><td>The key <code>name:</code></td><td>5</td><td>5, one per character</td></tr>
+<tr><td>The value <code>Priya</code></td><td>5</td><td>1 repeated, the same for <code>Pune</code></td></tr></table></div>
+<p>A token is what gets <b>tested from</b> a position. It can be any length, so it can pass through several positions in one turn. From the place before <code>n</code>, the token <code>name</code> moves the bookmark 4 places. That's why the saved lists are organised as positions &times; tokens, and why a turn only looks up the position where it starts.</p>
+<p>Real engines may merge or optimise positions, so their exact count differs from this teaching version.</p>
+<h3>The 2 tricks side by side</h3>
+<div class="tbl"><table><tr><th></th><th>llama.cpp</th><th>XGrammar</th></tr>
+<tr><td>Work before generating</td><td>Little</td><td>Builds the saved groups</td></tr>
+<tr><td>Tokens checked if the model's pick is legal</td><td>1</td><td>The "check live" group</td></tr>
+<tr><td>Tokens checked if the pick is illegal</td><td>All</td><td>The "check live" group</td></tr>
+<tr><td>Mask built</td><td>Only when needed</td><td>Every step</td></tr>
+<tr><td>Speed</td><td>Varies by step</td><td>More even</td></tr></table></div>
+<p>Neither method chooses the token. Both only decide what's allowed. XGrammar may have its mask ready before the model finishes scoring, because the CPU and GPU work at the same time, but the mask is still applied to the scores just before the pick.</p>
+<h2 id="xgrammar-s-lists-on-a-real-example">XGrammar's lists, on a real example</h2>
+<h3>One schema, start to finish</h3>
+<p>This is the same idea on the smallest useful schema, from a real run: one required field, <code>age</code>, an integer. There are 13 pretend tokens: <code>{</code> <code>{a</code> <code>age</code> <code>a</code> <code>g</code> <code>e:</code> <code>:</code> <code>2</code> <code>9</code> <code>29</code> <code>}</code> <code>9}</code> <code>hi</code></p>
+<p><b>The converter writes grammar text.</b> The key becomes exact text, and the type becomes a link:</p>
+<pre>root    ::= object
+object  ::= "{age:" integer "}"
+integer ::= [0-9] | [0-9] integer</pre>
+<p><b>The parser builds the table.</b> Each exact character becomes its own test:</p>
+<pre>object  : [ {, a, g, e, :, integer, } ]
+integer : [ digit ]  or  [ digit, integer ]</pre>
+<p><b>XGrammar saves lists per position.</b> Each position gets 3 lists: accepted, rejected and check live. Rejected is simply every token not shown here:</p>
+<div class="tbl"><table><tr><th>Position</th><th>Expects</th><th>Accepted</th><th>Check live</th></tr>
+<tr><td>P1</td><td><code>{</code></td><td><code>{</code> <code>{a</code></td><td>None</td></tr>
+<tr><td>P2</td><td><code>a</code></td><td><code>a</code> <code>age</code></td><td>None</td></tr>
+<tr><td>P3</td><td><code>g</code></td><td><code>g</code></td><td>None</td></tr>
+<tr><td>P4</td><td><code>e</code></td><td><code>e:</code></td><td>None</td></tr>
+<tr><td>P5</td><td><code>:</code></td><td><code>:</code></td><td>None</td></tr>
+<tr><td>P6</td><td>The last digit</td><td><code>2</code> <code>9</code></td><td><code>29</code> <code>9}</code></td></tr>
+<tr><td>P7</td><td>A digit, more to follow</td><td><code>2</code> <code>9</code> <code>29</code></td><td>None</td></tr>
+<tr><td>P8</td><td><code>}</code></td><td><code>}</code></td><td>None</td></tr></table></div>
+<p>P6 and P7 exist because <code>integer</code> has 2 options, and both are alive at once. <code>9}</code> is live at P6 because it leaves the <code>integer</code> rule, so only the stack can say a <code>}</code> follows.</p>
+<p><b>Then each turn uses the lists.</b> Writing <code>{age:29}</code>:</p>
+<div class="tbl"><table><tr><th>Written</th><th>Positions</th><th>Live check</th><th>Legal</th><th>Picked</th></tr>
+<tr><td>(nothing)</td><td>P1</td><td>None</td><td><code>{</code> <code>{a</code></td><td><code>{a</code></td></tr>
+<tr><td><code>{a</code></td><td>P3</td><td>None</td><td><code>g</code></td><td><code>g</code></td></tr>
+<tr><td><code>{ag</code></td><td>P4</td><td>None</td><td><code>e:</code></td><td><code>e:</code></td></tr>
+<tr><td><code>{age:</code></td><td>P6, P7</td><td><code>9}</code> yes</td><td><code>2</code> <code>9</code> <code>29</code> <code>9}</code></td><td><code>29</code></td></tr>
+<tr><td><code>{age:29</code></td><td>P8, P6, P7</td><td><code>9}</code> yes</td><td><code>2</code> <code>9</code> <code>29</code> <code>}</code> <code>9}</code></td><td><code>}</code></td></tr></table></div>
+<p>The picks here spell the example, and a real model would make them. After the first token, the turn starts at P3 and skips P2, because <code>{a</code> crossed it. At the last turn 3 positions are alive, because the number could end or could continue.</p>
+<h3>P6, P7 and P8, slowly</h3>
+<p><b>"Expects" and "Accepted" are different things.</b> "Expects" is the next single character. "Accepted" lists tokens, and a token can be longer. A token is accepted if all its characters fit inside the current rule. So P2 expects <code>a</code>, and accepts both <code>a</code> and <code>age</code>.</p>
+<p><b>Why 2 positions for a digit?</b> When a digit arrives, the checker can't yet know whether it's the last one, so <code>integer</code> keeps both options alive:</p>
+<div class="tbl"><table><tr><th>Position</th><th>Means</th><th>Note, | marks the end of the rule</th></tr>
+<tr><td>P6</td><td>This digit is the last</td><td><code>digit | }</code></td></tr>
+<tr><td>P7</td><td>At least 1 more digit follows</td><td><code>digit integer | }</code></td></tr></table></div>
+<p><b>Why are tokens live at P6 but not P7?</b> At P6 the rule ends after 1 digit. A longer token has to go past the end, and only the stack knows what's there:</p>
+<div class="tbl"><table><tr><th>Token at P6</th><th>Walk</th><th>List</th></tr>
+<tr><td><code>9</code></td><td>The digit fits and the rule ends exactly</td><td>Accepted</td></tr>
+<tr><td><code>29</code></td><td><code>2</code> fits, then <code>9</code> falls outside the rule</td><td>Check live</td></tr>
+<tr><td><code>9}</code></td><td><code>9</code> fits, then <code>}</code> falls outside the rule</td><td>Check live</td></tr></table></div>
+<p>At P7, the rule still contains <code>integer</code> after the digit, so <code>29</code> stays inside and is accepted at once. <code>9}</code> fails there, because a digit must follow, so it's rejected without needing the stack.</p>
+<p>The live check reads what's below the line. At P6 that's <code>}</code>, so <code>9}</code> passes and <code>29</code> fails. <code>29</code> is still legal overall, because P7 accepted it. A token only needs one position to allow it.</p>
+<p><b>Where P8 comes from.</b> It's the <code>}</code> position in <code>object</code>, reached when <code>integer</code> ends. After <code>{age:2</code>, the P6 note has finished its digit, so it's now at P8. The P7 note expands <code>integer</code> again, into a new P6 and P7. That's why 3 positions are alive.</p>
+<p><b>But <code>29</code> is a valid number, so why is it live at P6?</b> Because the checker doesn't know what a number is. It only follows the rule, and P6 means "exactly 1 digit, then this rule ends". <code>29</code> doesn't fit that option, but it does fit P7, so the whole number is fine. The list can't simply reject it at P6, because the list looks at this rule alone and can't see what comes after it. The live check settles it.</p>
+<p>2 notes on this example. P6 and P7 come from how I wrote the rule, as a loop through itself. Written as "1 or more digits", one looping position would do. And real XGrammar can do better here: context expansion knows only <code>}</code> follows this rule, so it can reject <code>29</code> at P6 ahead of time.</p>
+<p><b>Does XGrammar have a stack?</b> Yes. The paper builds a persistent execution stack. When there are several notes, they share their common lower part rather than each keeping a full copy, so branching and going back are quick.</p>
+<h3>A nested example: the saved lists</h3>
+<p>A <b>position</b> is a place in a rule. This grammar needed 4. For each one, tokens are tested against the current rule only:</p>
+<div class="tbl"><table><tr><th>Position</th><th>Expects</th><th>Accepted</th><th>Check live</th></tr>
+<tr><td>P1</td><td><code>[</code></td><td><code>[</code> <code>[[</code></td><td>None</td></tr>
+<tr><td>P2</td><td>A digit</td><td><code>1</code> <code>2</code></td><td><code>1]</code></td></tr>
+<tr><td>P3</td><td><code>]</code></td><td><code>]</code></td><td><code>]]</code></td></tr>
+<tr><td>P4</td><td><code>,</code></td><td><code>,</code></td><td>None</td></tr></table></div>
+<p>Everything else is rejected at that position. <code>1]</code> and <code>]]</code> are live because they run past the end of the current rule, so the rule alone can't answer.</p>
+<h3>One turn, exactly</h3>
+<p>Take the moment after <code>[[1</code>:</p>
+<ol><li><b>Read the stack.</b> There are 2 notes, because the digit could be followed by a comma or could end the list. Their tops are <code>,</code> (P4) and <code>]</code> (P3).</li>
+<li><b>Look up both positions.</b> P4 accepts <code>,</code>. P3 accepts <code>]</code>. No token scan is needed.</li>
+<li><b>Check live tokens on the full stack.</b> P3 lists <code>]]</code>. Walk it through the full note: 2 lists are open, so it's legal.</li>
+<li><b>Combine.</b> Legal tokens are <code>,</code> <code>]</code> <code>]]</code>. A token is legal if any note allows it.</li>
+<li><b>Mask.</b> The other 6 tokens get probability 0.</li>
+<li><b>The model picks</b> from the 3 left. Here it's <code>,</code>.</li>
+<li><b>Update the stack</b> with that one token.</li></ol>
+<h3>The whole run</h3>
+<div class="tbl"><table><tr><th>Written</th><th>Positions</th><th>Live check</th><th>Legal</th><th>Picked</th></tr>
+<tr><td>(nothing)</td><td>P1</td><td>None</td><td><code>[</code> <code>[[</code></td><td><code>[</code></td></tr>
+<tr><td><code>[</code></td><td>P1, P2</td><td><code>1]</code> yes</td><td><code>[</code> <code>[[</code> <code>1</code> <code>2</code> <code>1]</code></td><td><code>[</code></td></tr>
+<tr><td><code>[[</code></td><td>P1, P2</td><td><code>1]</code> yes</td><td><code>[</code> <code>[[</code> <code>1</code> <code>2</code> <code>1]</code></td><td><code>1</code></td></tr>
+<tr><td><code>[[1</code></td><td>P3, P4</td><td><code>]]</code> yes</td><td><code>,</code> <code>]</code> <code>]]</code></td><td><code>,</code></td></tr>
+<tr><td><code>[[1,</code></td><td>P1, P2</td><td><code>1]</code> yes</td><td><code>[</code> <code>[[</code> <code>1</code> <code>2</code> <code>1]</code></td><td><code>2</code></td></tr>
+<tr><td><code>[[1,2</code></td><td>P3, P4</td><td><code>]]</code> yes</td><td><code>,</code> <code>]</code> <code>]]</code></td><td><code>]</code></td></tr>
+<tr><td><code>[[1,2]</code></td><td>P3</td><td><code>]]</code> <b>no</b></td><td><code>]</code></td><td><code>]</code></td></tr></table></div>
+<p>The picks here are simply the ones needed to spell the example. A real model would choose them. Then the stack is empty, so the text is finished.</p>
+<p>P3 appears 3 times. The saved answer never changes, and only the live check does: <code>]]</code> was legal twice and illegal the third time, because just 1 list was still open.</p>
+<p>In the teaching version, a saved list is built the first time a position is reached. The real XGrammar prepares them before generation starts. The stack is still updated every turn, and it tells the engine which saved lists to read.</p>
+<h2 id="the-whole-journey-with-the-real-engines">The whole journey, with the real engines</h2>
+<p>This is one complete run with nothing assumed and no toy code. It uses real llama.cpp and the real XGrammar library (version 0.2.8) on my laptop, with Qwen2.5 1.5B.</p>
+<h3>Step 1: you write a schema and a prompt</h3>
+<pre>{
+  "type": "object",
+  "properties": { "age": { "type": "integer" } },
+  "required": ["age"],
+  "additionalProperties": false
+}</pre>
+<p>Prompt: <code>Extract the person's age as JSON. Text: Priya is 29.</code></p>
+<p>With no grammar, the model replied with a <code>```json</code> fence and a nested <code>person</code> object holding a <code>name</code> too. That's the problem we're solving.</p>
+<h3>Step 2: the converter writes grammar text</h3>
+<p>This happens once, before any token. llama.cpp produced:</p>
+<pre>root          ::= "{" space age-kv space "}"
+age-kv        ::= "\"age\"" space ":" space integer
+integer       ::= ("-"? integral-part)
+integral-part ::= [0] | [1-9] [0-9]{0,15}
+space         ::= | " " | "\n"{1,2} [ \t]{0,20}</pre>
+<p>XGrammar produced its own version of the same idea, with a looser whitespace rule (<code>[ \n\r\t]*</code>):</p>
+<pre>root ::= "{" [ \n\r\t]* "\"age\"" [ \n\r\t]* ":" [ \n\r\t]* basic_integer [ \n\r\t]* "}"</pre>
+<p>So both converters agree on the shape, but each writes its own grammar.</p>
+<p><b><code>root</code></b> is the starting rule, where the checker begins. It's like <code>main()</code> in a program, and the name is a convention both engines use. <b><code>basic_integer</code></b> is just the name XGrammar's converter gave its rule for whole numbers, the same job as <code>integer</code> in llama.cpp. Here's its real text:</p>
+<pre>basic_integer   ::= ("0" | basic_integer_1 [1-9] [0-9]*) (=[ \n\r\t]* "}")
+basic_integer_1 ::= ("" | "-") (=[1-9] [0-9]*)</pre>
+<p>So a number is <code>0</code>, or an optional <code>-</code>, then 1 to 9, then any digits. That rules out <code>007</code>. The <code>(=...)</code> part is a lookahead added by XGrammar's compiler, describing what can come after this rule. Here that's optional whitespace, then <code>}</code>.</p>
+<h3>Step 3: the parser builds the table</h3>
+<p><b>The table isn't one line.</b> It has one row per rule. Each row is a list of small entries, and every quoted character gets its own entry. Simplified, llama.cpp's table looks like this:</p>
+<pre>root          : CHAR {, REF space, REF age-kv, REF space, CHAR }, END
+age-kv        : CHAR ", CHAR a, CHAR g, CHAR e, CHAR ",
+                REF space, CHAR :, REF space, REF integer, END
+integer       : REF helper-minus, REF integral-part, END
+helper-minus  : CHAR -, ALT, (empty), END
+integral-part : CHAR 0, ALT, CHAR 1 to 9, REF helper-digits, END
+helper-digits : up to 15 digits, as extra rows
+space         : (empty), ALT, CHAR space, ALT, CHAR newline..., END</pre>
+<div class="tbl"><table><tr><th>Entry</th><th>Meaning</th></tr>
+<tr><td><code>CHAR</code></td><td>Must match this character</td></tr>
+<tr><td><code>REF</code></td><td>Go to that row (<code>RULE_REF</code> in the code)</td></tr>
+<tr><td><code>ALT</code></td><td>Or: another option starts here</td></tr>
+<tr><td><code>END</code></td><td>End of this rule</td></tr></table></div>
+<p>The helper rows weren't in your text. The parser adds them, because the table has no entry for "optional" or "repeat". So <code>"-"?</code> becomes a rule that is either <code>-</code> or empty, and <code>[0-9]{0,15}</code> is rewritten as helper rules too. The names here are mine for readability. In the table, names are stored as numbers.</p>
+<h3>Step 4: XGrammar builds its saved lists; llama.cpp doesn't</h3>
+<div class="tbl"><table><tr><th></th><th>llama.cpp</th><th>XGrammar</th></tr>
+<tr><td>Before generating</td><td>Table only</td><td>Table, plus saved token lists per position</td></tr>
+<tr><td>This compile</td><td>Not measured</td><td>2.4 ms</td></tr></table></div>
+<h3>Step 5: the stack is created and the model reads the prompt</h3>
+<p>2 separate things happen when your request starts, and they don't touch each other.</p>
+<p><b>The stack is set up.</b> The checker takes the <code>root</code> row and puts it on a new stack. The top is now the first entry, <code>CHAR {</code>, already a real character, so the stack is ready:</p>
+<pre>Still to do:  {  space  age-kv  space  }</pre>
+<p>If <code>root</code> had several options, there would be one note per option. Here there's 1. In XGrammar, this tracking lives in a <code>GrammarMatcher</code>.</p>
+<p><b>The model reads the prompt.</b> Your prompt goes through the chat template, becomes tokens, and passes through the model, which builds its KV cache. The grammar plays no part here. Your prompt never touches the stack. On my run, llama.cpp fed only generated tokens to the grammar. Some setups also feed the assistant header from the chat template, but never your message. That's how the prompt can be plain English without breaking the JSON rules.</p>
+<p>Then the first turn begins: the model scores all tokens, and the checker's first question is "does it start with <code>{</code>?"</p>
+<div class="tbl"><table><tr><th></th><th>Made</th><th>Shared between requests?</th></tr>
+<tr><td>Rule table, saved lists</td><td>Once per schema</td><td>Yes (XGrammar caches compiled grammars)</td></tr>
+<tr><td>Stack</td><td>Once per reply</td><td>No</td></tr>
+<tr><td>Model's KV cache</td><td>Once per reply</td><td>Not by default in my tests; a server can reuse a shared prompt prefix</td></tr></table></div>
+<p>So if 2 users send the same schema, they can share the same compiled grammar, but each has a separate stack, because each reply is at a different point.</p>
+<h3>Step 6: every turn</h3>
+<p>Model scores come from llama.cpp. "Legal" is the number of tokens the real XGrammar allowed, out of 151,936. Its count is higher than llama.cpp's on some turns because its whitespace rule is looser.</p>
+<div class="tbl"><table><tr><th>#</th><th>Model's favourite</th><th>Result</th><th>Token used</th><th>Legal</th></tr>
+<tr><td>1</td><td><code>```</code> 63.4%</td><td><b>Blocked</b></td><td><code>{\n</code> 16.3%</td><td>7</td></tr>
+<tr><td>2</td><td>space 84.7%</td><td>OK</td><td>space</td><td>425</td></tr>
+<tr><td>3</td><td><code> "</code> 100%</td><td>OK</td><td><code> "</code></td><td>425</td></tr>
+<tr><td>4</td><td><code>person</code> 43.2%</td><td><b>Blocked</b></td><td><code>age</code> 38.5%</td><td>3</td></tr>
+<tr><td>5</td><td><code>":</code> 99.95%</td><td>OK</td><td><code>":</code></td><td>13</td></tr>
+<tr><td>6</td><td>space 97.3%</td><td>OK</td><td>space</td><td>434</td></tr>
+<tr><td>7</td><td><code>2</code> 100%</td><td>OK</td><td><code>2</code></td><td>434</td></tr>
+<tr><td>8</td><td><code>9</code> 100%</td><td>OK</td><td><code>9</code></td><td>434</td></tr>
+<tr><td>9</td><td><code>\n</code> 99.7%</td><td>OK</td><td><code>\n</code></td><td>434</td></tr>
+<tr><td>10</td><td><code>}</code> 100%</td><td>OK</td><td><code>}</code></td><td>424</td></tr>
+<tr><td>11</td><td>End of text 99.99%</td><td>OK</td><td>End</td><td>1</td></tr></table></div>
+<p>Scores shown are rounded. <code>2</code> and <code>9</code> are separate tokens, because this tokenizer writes numbers digit by digit.</p>
+<h3>How the stack changes</h3>
+<div class="tbl"><table><tr><th>After token</th><th>Still to do, top first</th></tr>
+<tr><td>Start</td><td><code>{ space age-kv space }</code></td></tr>
+<tr><td><code>{\n</code></td><td><code>space age-kv space }</code></td></tr>
+<tr><td>space</td><td>Still whitespace, then the same</td></tr>
+<tr><td><code> "</code></td><td><code>a g e " space : space integer space }</code></td></tr>
+<tr><td><code>age</code></td><td><code>" space : space integer space }</code></td></tr>
+<tr><td><code>":</code></td><td><code>space integer space }</code></td></tr>
+<tr><td>space</td><td><code>integer space }</code></td></tr>
+<tr><td><code>2</code></td><td><code>up to 15 digits, space }</code></td></tr>
+<tr><td><code>9</code></td><td><code>up to 14 digits, space }</code></td></tr>
+<tr><td><code>\n</code></td><td><code>space }</code></td></tr>
+<tr><td><code>}</code></td><td>Empty</td></tr></table></div>
+<p>At the <code>2</code>, 3 things happen at once. The optional <code>-</code> is skipped, the <code>[0]</code> option dies, and <code>[1-9] [0-9]{0,15}</code> survives.</p>
+<h3>Turn 4 in each engine</h3>
+<p>The top of the note is the <code>a</code> of <code>age</code>.</p>
+<div class="tbl"><table><tr><th>Step</th><th>llama.cpp</th><th>XGrammar</th></tr>
+<tr><td>1</td><td>Model scores all tokens</td><td>Mask built on the CPU while the model runs</td></tr>
+<tr><td>2</td><td>Pick <code>person</code>, ignoring rules</td><td>Stack points to this position</td></tr>
+<tr><td>3</td><td>Check it: <code>p</code> isn't <code>a</code>, illegal</td><td>Read the saved list: 3 tokens legal</td></tr>
+<tr><td>4</td><td>Scan all tokens and mask the illegal ones</td><td>Check any live tokens, then mask</td></tr>
+<tr><td>5</td><td>Pick again: <code>age</code></td><td>Pick from scores: <code>age</code></td></tr>
+<tr><td>6</td><td>Update the stack</td><td>Update the stack</td></tr></table></div>
+<p>The XGrammar column is how it would run inside a serving engine. In this test I fed it the tokens llama.cpp chose, and it allowed all 11. It allowed none of the favourites that llama.cpp blocked. Its masks took 0.008 to 0.1 ms each here.</p>
+<p>In llama.cpp, the model's favourite was illegal on 2 of the 11 turns, so only those turns should have needed a full scan.</p>
+<h3>Step 7: the finish</h3>
+<p>After <code>}</code> the stack is empty, so only an end token is legal, and generation stops. In my XGrammar test I registered one stop token, so that count is 1. llama.cpp allows any of the model's end tokens. Your app receives:</p>
+<pre>{
+  "age": 29
+}</pre>
+<p>Your code can now read <code>age</code> safely. The grammar guaranteed the shape. The number 29 came from the model reading the prompt.</p>
+<h3>Who does what</h3>
+<p>The checker is part of XGrammar, not a separate program. XGrammar has 2 main parts, and the serving engine drives them:</p>
+<div class="tbl"><table><tr><th>Part</th><th>When it runs</th><th>Job</th></tr>
+<tr><td><code>GrammarCompiler</code></td><td>Once per schema</td><td>Schema to rules to saved lists</td></tr>
+<tr><td><code>GrammarMatcher</code></td><td>Every turn, one per reply</td><td>Keeps the stack, builds the mask</td></tr>
+<tr><td>Serving engine, such as vLLM</td><td>Every turn</td><td>Runs the model and the loop, picks the token</td></tr></table></div>
+<p>This is the loop, using the real calls from my test. Only the model lines are illustrative, because in the test the tokens came from llama.cpp:</p>
+<pre>compiled = compiler.compile_json_schema(schema)   # once
+matcher  = GrammarMatcher(compiled)               # once per reply
+
+while not matcher.is_terminated():
+    scores = model(...)                           # the engine
+    matcher.fill_next_token_bitmask(mask)         # XGrammar: legal tokens
+    token  = pick(scores, mask)                   # the engine
+    matcher.accept_token(token)                   # XGrammar: update stack</pre>
+<p>The engine doesn't need to look at the stack. It just asks "what's legal?" and then reports "this token was chosen". In llama.cpp there's no such split, because the checker is built in.</p>
+<h3>Names, in one place</h3>
+<div class="tbl"><table><tr><th>Name</th><th>What it is</th></tr>
+<tr><td>Grammar</td><td>The general word for a set of rules</td></tr>
+<tr><td>Converter</td><td>Turns a schema into grammar text. It runs once, and you skip it if you write the grammar yourself</td></tr>
+<tr><td>Parser</td><td>Turns grammar text into a table. It runs once, before generating, so it isn't part of the checker. In XGrammar this step sits inside the compiler</td></tr>
+<tr><td>Checker</td><td>My plain word for the part that decides what's legal each turn, using the table and the stack. It isn't an official term. In XGrammar it's <code>GrammarMatcher</code>. In llama.cpp it's the grammar code in the sampler</td></tr>
+<tr><td>XGrammar</td><td>An open-source library that serving engines plug in. It doesn't run the model. It also handles regex and custom grammars, not just schemas</td></tr>
+<tr><td>Guidance</td><td>Another project for the same job, built around a Rust library called llguidance. vLLM offers it as a backend, and it computes masks on the fly instead of precomputing lists. OpenAI's docs say its custom-tool grammars use LLGuidance</td></tr></table></div>
+<h3>Common questions about these steps</h3>
+<p><b>Why schema, then rules, then table?</b> Each layer serves a different reader. A schema is easy for you and describes data only. Rule text can describe any format, not just JSON. A table is what a program can walk through quickly. You can start at the rule layer by writing a grammar yourself, and that skips the schema. In llama.cpp, the converter writes text so that schemas and hand-written grammars go through the one parser.</p>
+<p><b>Rule or table, what's the difference?</b> They hold the same information. A rule is text for people, and a table is the same thing as data for the program. In my toy it's a real Python dictionary, <code>{"list": [[...]], "items": [...]}</code>. In llama.cpp it's a C++ list of lists, where a rule's number finds its row.</p>
+<p><b>Why a mask, if the model already gave probabilities?</b> XGrammar's matcher never sees the probabilities, so it doesn't approve the top token. It gives a yes or no for every token at the current position. If only the top token were judged, a rejection would leave you asking again for the next one, and a sampler doesn't always pick the top token anyway. With a mask, every illegal token is removed in one step. For this vocabulary, a mask is 151,936 yes or no answers, which is about 19 KB. llama.cpp doesn't build a separate mask object: when it needs to, it writes minus infinity straight into the scores.</p>
+<p><b>Is the position updated by adding a number?</b> No. A position isn't a counter. The token's characters are walked through the rules one at a time, each one crossing off, entering or leaving a rule. <code>age</code> looks like +3, but a token like <code>":</code> finishes one piece of a rule and moves on, and a digit can split one note into several. So the update is the walk itself.</p>
+<h2 id="so-why-do-we-need-the-model-at-all">So why do we need the model at all?</h2>
+<p>Because legal isn't the same as right. Here's how many tokens were legal at each step of one real reply, re-split into tokens by longest match, so these aren't the exact tokens the model produced (dots are spaces). Bar lengths use a log scale, so each extra 20% of length means roughly 10x more tokens. Red steps are nearly decided by the rules, and green steps are almost entirely up to the model:</p>
+<div class="bar tk"><span class="lab"><code>{\n</code></span><span class="track"><div class="fill red" style="width:11.6%"></div></span><span class="val">4</span></div><div class="bar tk"><span class="lab"><code>··</code></span><span class="track"><div class="fill " style="width:45.4%"></div></span><span class="val">226</span></div><div class="bar tk"><span class="lab"><code>&quot;name</code></span><span class="track"><div class="fill " style="width:45.4%"></div></span><span class="val">225</span></div><div class="bar tk"><span class="lab"><code>&quot;:</code></span><span class="track"><div class="fill red" style="width:21.5%"></div></span><span class="val">13</span></div><div class="bar tk"><span class="lab"><code>·&quot;</code></span><span class="track"><div class="fill " style="width:50.1%"></div></span><span class="val">394</span></div><div class="bar tk"><span class="lab"><code>Pri</code></span><span class="track"><div class="fill ok" style="width:99.7%"></div></span><span class="val">147,240</span></div><div class="bar tk"><span class="lab"><code>ya</code></span><span class="track"><div class="fill ok" style="width:99.7%"></div></span><span class="val">147,240</span></div><div class="bar tk"><span class="lab"><code>&quot;,\n</code></span><span class="track"><div class="fill ok" style="width:99.7%"></div></span><span class="val">147,240</span></div><div class="bar tk"><span class="lab"><code>··</code></span><span class="track"><div class="fill " style="width:45.4%"></div></span><span class="val">226</span></div><div class="bar tk"><span class="lab"><code>&quot;a</code></span><span class="track"><div class="fill " style="width:45.4%"></div></span><span class="val">225</span></div><div class="bar tk"><span class="lab"><code>ge</code></span><span class="track"><div class="fill red" style="width:5.8%"></div></span><span class="val">2</span></div><div class="bar tk"><span class="lab"><code>&quot;:</code></span><span class="track"><div class="fill red" style="width:15.0%"></div></span><span class="val">6</span></div><div class="bar tk"><span class="lab"><code>·</code></span><span class="track"><div class="fill red" style="width:21.5%"></div></span><span class="val">13</span></div><div class="bar tk"><span class="lab"><code>2</code></span><span class="track"><div class="fill red" style="width:19.3%"></div></span><span class="val">10</span></div><div class="bar tk"><span class="lab"><code>9</code></span><span class="track"><div class="fill red" style="width:22.1%"></div></span><span class="val">14</span></div><div class="bar tk"><span class="lab"><code>,\n</code></span><span class="track"><div class="fill red" style="width:22.1%"></div></span><span class="val">14</span></div><div class="bar tk"><span class="lab"><code>··</code></span><span class="track"><div class="fill " style="width:45.4%"></div></span><span class="val">226</span></div><div class="bar tk"><span class="lab"><code>&quot;c</code></span><span class="track"><div class="fill " style="width:45.4%"></div></span><span class="val">225</span></div><div class="bar tk"><span class="lab"><code>ity</code></span><span class="track"><div class="fill red" style="width:9.2%"></div></span><span class="val">3</span></div><div class="bar tk"><span class="lab"><code>&quot;:</code></span><span class="track"><div class="fill red" style="width:20.1%"></div></span><span class="val">11</span></div><div class="bar tk"><span class="lab"><code>·&quot;</code></span><span class="track"><div class="fill " style="width:50.0%"></div></span><span class="val">390</span></div><div class="bar tk"><span class="lab"><code>Pu</code></span><span class="track"><div class="fill ok" style="width:99.7%"></div></span><span class="val">147,217</span></div><div class="bar tk"><span class="lab"><code>ne</code></span><span class="track"><div class="fill ok" style="width:99.7%"></div></span><span class="val">147,217</span></div><div class="bar tk"><span class="lab"><code>&quot;\n</code></span><span class="track"><div class="fill ok" style="width:99.7%"></div></span><span class="val">147,217</span></div><div class="bar tk"><span class="lab"><code>}</code></span><span class="track"><div class="fill " style="width:45.4%"></div></span><span class="val">225</span></div>
+<p>Some steps are almost fully decided, like the 4 at the start. But at <code>Pri</code>, 147,240 tokens were legal in my toy checker. Real XGrammar allowed 147,408 at the same point, because its rules differ slightly, so read this as about 147,000. The grammar has no idea the person is called Priya, because that lives in the prompt and only the model read it. At the age, all 10 digits were legal: only the model knows it's <code>2</code> then <code>9</code>.</p>
+<p>The test is simple: remove the model and pick a random legal token at each step. I ran that for 25 steps on the same schema. The result is legal under my toy's unlimited whitespace rule, and useless. Real grammars cap whitespace, and in a rerun on real XGrammar, 4 of 5 random seeds stayed whitespace-only for all 25 picks:</p>
+<pre>{\n\n\t·\t\t\t\t\t·\t····\t\t·······························\t···\t····································································································································································\t\t\t\t\t\t\t······\t·······································································································································································\t·····\t\t\t\t\t·····································································\t\t\t·······················\t\t\t\t\t\t····</pre>
+<p>Dots are spaces. That's a <code>{</code> followed by nothing but spaces, tabs and newlines, because whitespace is legal there and random picks never moved on. It never reached a name.</p>
+<div class="tbl"><table><tr><th>The grammar knows</th><th>The model knows</th></tr>
+<tr><td>What's <b>allowed</b></td><td>What's <b>right</b></td></tr>
+<tr><td>After <code>"age":</code> comes a number</td><td>The number is 29</td></tr>
+<tr><td>The answer is yes or no</td><td>Which one</td></tr>
+<tr><td>Never wrong about form</td><td>Can be wrong about facts</td></tr></table></div>
+<p>So the grammar never replaces the model. It only narrows the choices, and the model's scores decide among what's left.</p>
+<h2 id="what-it-doesn-t-guarantee">What it doesn't guarantee</h2>
+<div class="tbl"><table>
+<tr><th>Case</th><th>What happens</th><th>Evidence</th></tr>
+<tr><td>Data is missing</td><td>Valid but invented: <code>"age": 0</code>, or name <code>"Unknown"</code></td><td>My laptop</td></tr>
+<tr><td>Reply is cut off</td><td><code>{ "name": "Priya</code> fails to parse</td><td>My laptop, Claude docs</td></tr>
+<tr><td>Model refuses</td><td>The refusal may not follow the schema</td><td>OpenAI and Claude docs</td></tr>
+</table></div>
+<p>So it fixes the shape, not the truth. You should still validate the values in your own code; Google's docs say the same.</p>
+<h2 id="beyond-json">Beyond JSON</h2>
+<h3>Checkers for anything</h3>
+<p>A checker knows nothing about JSON. It follows whatever rules you give it. These are real runs on my laptop, each with a one-to-four line grammar:</p>
+<div class="tbl"><table>
+<tr><th>Asked</th><th>Forced output</th></tr>
+<tr><td>Is Pune in India? Explain.</td><td><code>yes</code></td></tr>
+<tr><td>Classify a bad review</td><td><code>negative</code></td></tr>
+<tr><td>When did India become independent?</td><td><code>1947-08-15</code></td></tr>
+<tr><td>SQL for users older than 30</td><td><code>SELECT name FROM users WHERE age &gt; 30;</code></td></tr>
+<tr><td>Priya's details</td><td><code>&lt;person&gt;&lt;name&gt;Priya&lt;/name&gt;&lt;age&gt;29&lt;/age&gt;&lt;/person&gt;</code></td></tr>
+</table></div>
+<p>The SQL grammar, in full:</p>
+<pre>root  ::= "SELECT " col " FROM users" where? ";"
+col   ::= "name" | "age" | "*"
+where ::= " WHERE " col " " op " " [0-9]+
+op    ::= "&gt;" | "&lt;" | "="</pre>
+<p>Each line is a rule: quotes are exact text, <code>|</code> means or, <code>[0-9]</code> is any one digit, <code>?</code> is optional, and <code>+</code> is one or more. This is the same in industry: vLLM accepts <code>choice</code>, <code>regex</code>, <code>grammar</code> (its docs show SQL), and OpenAI's custom tools accept Lark or regex grammars.</p>
+<div class="box">A grammar checks form, not meaning. That SQL would be just as legal against the wrong column. The grammar also only forces shape, not an ending: a test that allowed endless nesting ran until the 80-token limit.</div>
+<h3>SQL from start to finish</h3>
+<p>The checker doesn't know what SQL is, in the same way it doesn't know what JSON is. It only follows rules. Here's the whole journey.</p>
+<p><b>Step 1: there's no schema.</b> A JSON schema describes JSON, so it can't describe SQL. You start one step later, by writing the rules yourself, and that skips the converter. Here's the grammar I used:</p>
+<pre>root ::= &quot;SELECT &quot; col &quot; FROM users&quot; where? &quot;;&quot;
+col ::= &quot;name&quot; | &quot;age&quot; | &quot;*&quot;
+where ::= &quot; WHERE &quot; col &quot; &quot; op &quot; &quot; [0-9]+
+op ::= &quot;&gt;&quot; | &quot;&lt;&quot; | &quot;=&quot;</pre>
+<p><b>Step 2: the parser builds the table,</b> exactly as before. Quoted text becomes character tests, unquoted names become links to other rows, and <code>|</code> starts another option. This is the point where JSON and SQL stop being different: both are now just a table.</p>
+<p><b>Step 3: the checker runs.</b> It's the same code. I ran a version of these rules through my toy parser and checker with no code changes:</p>
+<div class="tbl"><table><tr><th>Text</th><th>Result</th></tr><tr><td><code>SELECT name FROM users WHERE age &gt; 30;</code></td><td>Accepted</td></tr><tr><td><code>SELECT * FROM users;</code></td><td>Accepted</td></tr><tr><td><code>SELECT age FROM users WHERE name = 5;</code></td><td>Accepted</td></tr><tr><td><code>DROP TABLE users;</code></td><td>Rejected</td></tr><tr><td><code>SELECT password FROM users;</code></td><td>Rejected</td></tr><tr><td><code>SELECT name FROM orders;</code></td><td>Rejected</td></tr><tr><td><code>SELECT name FROM users</code></td><td>Rejected</td></tr></table></div>
+<p>Look at the third row. <code>WHERE name = 5</code> is accepted, because the rules allow it, even though it makes no sense. A grammar checks form, not meaning. Also, the last row is rejected only because it isn't finished: it was never illegal along the way, it just lacks the final <code>;</code>.</p>
+<p><b>Step 4: a real run.</b> I asked "Write SQL for: names of users older than 30. Table users(name, age)." With no grammar, llama.cpp's reply began: <code>To write an SQL query that returns the names of users who are ...</code> With the grammar it replied <code>SELECT name FROM users WHERE age &gt; 30;</code> and stopped. Scores are from llama.cpp. "Legal" is the count from a separate replay of the same tokens through real XGrammar, which accepted all 12. Dots are spaces.</p>
+<div class="tbl"><table><tr><th>#</th><th>Model's favourite</th><th>Result</th><th>Token used</th><th>Legal</th></tr><tr><td>1</td><td><code>To</code> 94.33%</td><td><b>Blocked</b></td><td><code>SELECT</code></td><td>4</td></tr><tr><td>2</td><td><code>·name</code> 99.33%</td><td>OK</td><td><code>·name</code></td><td>9</td></tr><tr><td>3</td><td><code>·FROM</code> 81.07%</td><td>OK</td><td><code>·FROM</code></td><td>4</td></tr><tr><td>4</td><td><code>·users</code> 99.93%</td><td>OK</td><td><code>·users</code></td><td>6</td></tr><tr><td>5</td><td><code>·WHERE</code> 99.96%</td><td>OK</td><td><code>·WHERE</code></td><td>5</td></tr><tr><td>6</td><td><code>·age</code> 100%</td><td>OK</td><td><code>·age</code></td><td>9</td></tr><tr><td>7</td><td><code>·&gt;</code> 99.94%</td><td>OK</td><td><code>·&gt;</code></td><td>4</td></tr><tr><td>8</td><td><code>·</code> 100%</td><td>OK</td><td><code>·</code></td><td>1</td></tr><tr><td>9</td><td><code>3</code> 100%</td><td>OK</td><td><code>3</code></td><td>10</td></tr><tr><td>10</td><td><code>0</code> 100%</td><td>OK</td><td><code>0</code></td><td>11</td></tr><tr><td>11</td><td><code>;</code> 94.89%</td><td>OK</td><td><code>;</code></td><td>11</td></tr><tr><td>12</td><td><code>end</code> 99.71%</td><td>OK</td><td><code>end</code></td><td>1</td></tr></table></div>
+<p>The model's favourite first token was <code>To</code>, on its way to "To write an SQL query...", and only that first turn needed a block. After <code>SELECT</code>, its own favourites happened to be legal every time. The token <code>SELECT</code> crossed 6 letters of the rule in one turn, just like <code>age</code> did in JSON.</p>
+<h3>JSON mode vs Structured Outputs</h3>
+<div class="tbl"><table>
+<tr><th></th><th>JSON mode</th><th>Structured Outputs</th></tr>
+<tr><td>You send</td><td><code>json_object</code>, no schema</td><td>Your schema</td></tr>
+<tr><td>Valid JSON</td><td>Yes, except edge cases</td><td>Yes, except edge cases</td></tr>
+<tr><td>Your exact keys and types</td><td>No</td><td>Yes</td></tr>
+<tr><td>Mechanism published?</td><td><b>Not found</b></td><td>Yes: grammar + token mask</td></tr>
+</table></div>
+<p>OpenAI calls Structured Outputs "the evolution of JSON mode", but I couldn't find anywhere it has published how JSON mode works, so I can't state it as fact. llama.cpp shows the natural way to build it: same engine, a different grammar. <code>json_schema: {}</code> means "any JSON", and your schema means "this exact JSON":</p>
+<pre>ANY JSON (json_schema: {})
+root   ::= object
+object ::= "{" space ( string ":" space value ("," space string ":" space value)* )? space "}"
+value  ::= object | array | string | number | boolean | null
+
+YOUR SCHEMA
+root   ::= "{" space name-kv "," space age-kv "," space city-kv space "}"
+age-kv ::= "\"age\"" space ":" space integer</pre>
+<p>In the first, any key and any value are allowed. In the second, the key <code>"age"</code> is spelled out character by character, and it must be followed by an integer. That's why the model couldn't write <code>location</code>. It's a tighter rulebook, and the machinery is identical.</p>
+<h3>Who does this</h3>
+<p>OpenAI, Anthropic and Google all describe constrained decoding in their own docs. vLLM and llama.cpp offer it too. It's a feature you turn on, so not every JSON reply goes through it. OpenAI's older JSON mode gives valid JSON but doesn't ensure your schema, and OpenAI recommends Structured Outputs instead when possible.</p>
+<h2 id="likely-questions">Likely questions</h2>
+<p><b>Does the model know it's being blocked?</b> No. The block happens to its scores afterwards. In llama.cpp the schema isn't even added to the prompt, so the model can't see your schema unless you describe it there. Hosted APIs may handle this differently.</p>
+<p><b>Why "third choice" and not "wrong choice"?</b> The model still ranks tokens. The checker only removes options, and it takes the best of what remains.</p>
+<p><b>Did the values come out right?</b> Yes, in all 50 schema runs, but these were easy sentences. That's why the caveat uses the missing-age test.</p>
+<h2 id="sources">Sources</h2><ul class="sources">
+<li>OpenAI, <a href="https://openai.com/index/introducing-structured-outputs-in-the-api/">Introducing Structured Outputs in the API</a>: the 93% and 100% figures for gpt-4o-2024-08-06 on OpenAI's own evals, constrained decoding, refusals, JSON mode</li>
+<li>OpenAI docs, <a href="https://developers.openai.com/api/docs/guides/structured-outputs">Structured Outputs</a> and <a href="https://developers.openai.com/api/docs/guides/function-calling">Function calling</a>: JSON mode, strict mode, Lark and regex grammars, LLGuidance</li>
+<li>Anthropic docs, <a href="https://platform.claude.com/docs/en/build-with-claude/structured-outputs">Structured outputs</a>: constrained sampling with compiled grammars, refusals, max_tokens</li>
+<li>Google docs, <a href="https://ai.google.dev/gemini-api/docs/structured-output">Structured output</a>: constrained decoding and the keywords it doesn't enforce</li>
+<li>Y. Dong et al., <a href="https://arxiv.org/abs/2411.15100">XGrammar: Flexible and Efficient Structured Generation Engine for Large Language Models</a>, and the <a href="https://blog.mlc.ai/2026/05/04/xgrammar-2-fast-customizable-structured-generation">XGrammar-2 post</a></li>
+<li>llama.cpp source: <a href="https://github.com/ggml-org/llama.cpp/blob/master/src/llama-grammar.cpp">llama-grammar.cpp</a>, <a href="https://github.com/ggml-org/llama.cpp/blob/master/common/sampling.cpp">sampling.cpp</a>, <a href="https://github.com/ggml-org/llama.cpp/blob/master/common/json-schema-to-grammar.cpp">json-schema-to-grammar.cpp</a>, <a href="https://github.com/ggml-org/llama.cpp/blob/master/grammars/README.md">grammars README</a></li>
+<li>vLLM docs, <a href="https://docs.vllm.ai/en/stable/features/structured_outputs/">Structured outputs</a>: choice, regex and grammar options, xgrammar and guidance backends</li>
+<li><a href="https://github.com/guidance-ai/llguidance">llguidance</a> on GitHub: masks computed on the fly</li>
+<li>Experiments: Qwen2.5-1.5B-Instruct Q4_K_M with llama.cpp on a laptop CPU, and XGrammar 0.2.8, October 2026. Counts marked as toy come from the teaching checker on this page.</li>
+</ul>
+<div class="endcard"><h3><span data-live="structured-long" data-live-text="Watch the full video">Video coming soon</span></h3><p><span data-live="structured-long" data-live-text="The full video shows all of this in motion, with the real run token by token.">A full video and a Short on this topic are on the way. Subscribe to get them when they're out.</span></p>
+<div class="actions"><a class="btn ytbtn" data-watch="structured-long" data-soon target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.6 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg>Watch on YouTube</a>
+<a class="btn" data-channel target="_blank" rel="noopener">Subscribe</a>
+<a class="btn" href="https://www.linkedin.com/in/rohit-kumar-singh-621818a9/" target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><path d="M20.4 20.5h-3.6v-5.6c0-1.3 0-3-1.8-3s-2.1 1.4-2.1 2.9v5.7H9.3V9h3.4v1.6h.1c.5-.9 1.6-1.8 3.4-1.8 3.6 0 4.3 2.4 4.3 5.5v6.2zM5.3 7.4a2.1 2.1 0 1 1 0-4.1 2.1 2.1 0 0 1 0 4.1zM7.1 20.5H3.5V9h3.6v11.5zM22.2 0H1.8C.8 0 0 .8 0 1.7v20.6c0 .9.8 1.7 1.8 1.7h20.4c1 0 1.8-.8 1.8-1.7V1.7C24 .8 23.2 0 22.2 0z"/></svg>Follow on LinkedIn</a></div></div>
+<a class="next" href="../tokenizer/"><span>Next explainer</span><b>How a tokenizer works →</b></a>
+</article>
+</div>
+
+<footer class="site"><div class="in"><span>© 2026 Rohit Kumar Singh</span>
+<span><a href="https://www.linkedin.com/in/rohit-kumar-singh-621818a9/" target="_blank" rel="noopener">LinkedIn</a> · <a href="https://github.com/gotherohit/AIML" target="_blank" rel="noopener">GitHub</a> · <a href="mailto:rohitkrsingh2000@gmail.com">Email</a></span>
+<p class="ai-note"><b>About AI assistance:</b> the articles and code on this site are developed with the help of AI tools. Explanations are refined through in-depth conversations with AI, and code is written with AI assistance. Experiments are run for real, results come from that code, and claims are checked against the cited sources.</p></div></footer>
+<script src="../../assets/site.js"></script>
+</body></html>

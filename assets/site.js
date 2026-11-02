@@ -16,6 +16,8 @@ const VIDEOS = {
   "chat-short":  "https://youtube.com/shorts/MR_0fXvwU3A",       // What your AI actually sees when you chat
   "moe-short":   "https://youtube.com/shorts/4JVQ8tE2xX8",       // Mistral's "le Chonk" uses 5% of itself per token
   "embed-short": "https://youtube.com/shorts/gCkOUIoeHTQ",       // EmbeddingGemma 2 explained
+  "structured-long":  "",                                         // How AI guarantees perfect JSON (long video), add the link once public
+  "structured-short": "",                                         // Structured outputs Short, add the link once public
 };
 // ------------------------------------------------------------------------------------------
 
