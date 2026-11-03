@@ -18,6 +18,9 @@ const VIDEOS = {
   "embed-short": "https://youtube.com/shorts/gCkOUIoeHTQ",       // EmbeddingGemma 2 explained
   "structured-long":  "https://youtu.be/Ai2UBGvrvLQ",                                         // How AI guarantees perfect JSON (long video), scheduled
   "structured-short": "https://youtube.com/shorts/6XonUdFPcEU",                                         // Structured outputs Short, scheduled
+  "cu-long":   "",                                          // How AI computer use actually works (long video)
+  "cu-short":  "",                                          // AI can't see your screen. So how does it click?
+  "cu-short2": "",                                          // I set a trap for my own AI agent
 };
 // ------------------------------------------------------------------------------------------
 
