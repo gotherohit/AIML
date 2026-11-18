@@ -21,6 +21,7 @@ const VIDEOS = {
   "cu-long":   "https://youtu.be/M8XYY8Y4j4s",                                          // How AI computer use actually works (long video)
   "cu-short":  "https://youtube.com/shorts/YgH38crpeQw",                                          // AI can't see your screen. So how does it click?
   "cu-short2": "https://youtube.com/shorts/N_CIgDG8yOE",                                          // I set a trap for my own AI agent
+  "tfs-ep01":  "https://youtu.be/IKFiXlc0k-k",                                                                          // Transformers from scratch, Ep 1 (long video): paste the link when it's uploaded
 };
 // ------------------------------------------------------------------------------------------
 
@@ -61,7 +62,7 @@ function showPlayer(el, id) {
 function showSoon(el) {
   const label = el.dataset.label || "Video";
   el.classList.add("pending");
-  if (el.dataset.cover) el.style.backgroundImage = `url("${el.dataset.cover}")`;
+  if (el.dataset.cover) { el.style.backgroundImage = `url("${el.dataset.cover}")`; el.style.backgroundSize = "cover"; el.style.backgroundPosition = "center"; }
   el.innerHTML = `<div class="soon"><span class="label">${label} · coming soon</span>${el.dataset.title}</div>`;
 }
 document.querySelectorAll(".yt[data-video]").forEach((el) => {
@@ -132,7 +133,7 @@ if (toc) {
   const load = () => loading || (loading = fetch(root + "search.json").then((r) => r.json()).then((d) => (index = d)).catch(() => (index = [])));
   const norm = (s) => s.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "");
   const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  const KIND = { deep: "Deep dive", short: "Short read" };
+  const KIND = { deep: "Deep dive", short: "Short read", series: "Series" };
   function snippet(text, words) {
     const low = norm(text);
     let at = -1;

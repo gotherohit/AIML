@@ -199,6 +199,7 @@ footer.site .ai-note{flex-basis:100%;margin:4px 0 0;font-size:13px;line-height:1
 .kind.deep{background:color-mix(in srgb,#35d6c0 18%,transparent);color:#5fe3d0;border:1px solid color-mix(in srgb,#35d6c0 45%,transparent)}
 .kind.short{background:color-mix(in srgb,#ffb454 16%,transparent);color:#ffc777;border:1px solid color-mix(in srgb,#ffb454 45%,transparent)}
 .byline .kind{margin-right:2px}
+.kind.series{background:color-mix(in srgb,#fbbf24 16%,transparent);color:#fcd34d;border:1px solid color-mix(in srgb,#fbbf24 45%,transparent)}
 .subhead{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 14px;margin:34px 0 18px;padding-top:6px}
 .subhead:first-of-type{margin-top:8px}
 .subhead h3{margin:0;font-size:22px;letter-spacing:-.02em}
