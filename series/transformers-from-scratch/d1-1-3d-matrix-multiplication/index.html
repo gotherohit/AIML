@@ -137,7 +137,7 @@
 .ep .ad-mode{display:flex;gap:6px;align-items:center;justify-content:center;font-size:13px;color:#94a0c6;margin:2px 0 6px;flex-wrap:wrap}
 .ep .ad-mode button{background:#121a33;color:#94a0c6;border:1px solid #2a3870;border-radius:99px;padding:4px 10px;font-size:12.5px}
 .ep .ad-mode button.on{border-color:#5eead4;color:#5eead4}
-.ep .ad-cap{min-height:3.2em;color:#e6ebff;font-size:14.5px;padding:8px 10px;margin:6px 0 0;background:#121a33;border-radius:8px}.prose figure{margin:22px 0}.prose figure img{width:100%;height:auto;border-radius:12px;border:1px solid var(--line);display:block}.prose figcaption{color:var(--fg2);font-size:14.5px;margin-top:6px}</style>
+.ep .ad-cap{min-height:3.2em;color:#e6ebff;font-size:14.5px;padding:8px 10px;margin:6px 0 0;background:#121a33;border-radius:8px}.prose table.ids{width:100%;font-size:15px}.prose table.ids td,.prose table.ids th{padding:6px 8px;text-align:left}.prose table.ids b{font-family:var(--mono);color:var(--accent)}.prose figure{margin:22px 0}.prose figure img{width:100%;height:auto;border-radius:12px;border:1px solid var(--line);display:block}.prose figcaption{color:var(--fg2);font-size:14.5px;margin-top:6px}</style>
 </head><body>
 <header class="topbar"><div class="in">
 <a class="brand" href="../../../"><span class="mark">RK</span><span class="name">Rohit Kumar Singh</span></a>
@@ -154,11 +154,11 @@
 <h1>3-D matrix multiplication, finally visual</h1>
 <p class="dek">Inside every language model, the things being multiplied are 3-D blocks. Here's the one rule that tells you what comes out, shown in 3-D with the real GPT-2.</p>
 <div class="tags" style="margin-bottom:16px"><span class="tag">Matrix multiplication</span><span class="tag">PyTorch</span><span class="tag">GPT-2</span><span class="tag">Deep dive D1.1</span></div>
-<div class="byline"><span class="kind series">Series</span><span>By <b>Rohit Kumar Singh</b></span><span>November 2026</span><span>4 min read</span></div>
+<div class="byline"><span class="kind series">Series</span><span>By <b>Rohit Kumar Singh</b></span><span>November 2026</span><span>7 min read</span></div>
 </div>
 <div class="videos"><div class="yt" data-video="tfs-d11" data-soon data-label="Deep dive D1.1 · 9 min" data-title="3-D Matrix Multiplication, Finally Visual" data-cover="../../../images/covers/tfs-d11-player.jpg"></div></div>
 <div class="layout">
-<details class="toc"><summary>Contents</summary><ol><li><a href="#question">The question</a></li><li><a href="#flat">Two dimensions, one picture</a></li><li><a href="#block">Add a dimension</a></li><li><a href="#three">Three ways, and where the 12 comes from</a></li><li><a href="#gpt">Where you meet this: GPT-2</a></li><li><a href="#lookup">A lookup is a matrix multiplication</a></li><li><a href="#both">When both sides are blocks</a></li><li><a href="#rule">The whole rule</a></li></ol></details>
+<details class="toc"><summary>Contents</summary><ol><li><a href="#question">The question</a></li><li><a href="#flat">Two dimensions, one picture</a></li><li><a href="#block">Add a dimension</a></li><li><a href="#three">Three ways, and where the 12 comes from</a></li><li><a href="#gpt">Where blocks come from: text in GPT-2</a></li><li><a href="#lookup">GPT-2 looks each ID up</a></li><li><a href="#as-matmul">The same lookup, written as a matrix multiplication</a></li><li><a href="#why-lookup">So why does GPT-2 look up instead?</a></li><li><a href="#weights">What comes after: weight matrices</a></li><li><a href="#both">When both sides are blocks</a></li><li><a href="#rule">The whole rule</a></li></ol></details>
 <article class="prose">
 <div class="box key"><b>The rule</b><code>[B, T, K] @ [K, N] = [B, T, N]</code>. The last size of the left meets the first size of the
 right and disappears; everything in front comes along. <a href="https://colab.research.google.com/github/gotherohit/llm-scratch/blob/main/ch01-text-to-vectors/llm_scratch_ch01.ipynb">Try every example in Colab</a> (sections 1.0, 1.4, 1.11, 1.12).</div>
@@ -192,29 +192,71 @@ same numbers. Flattening is closest to what the computer does, because every row
 multiply them by a <code>[64, 768]</code> matrix: the 768 met a 64, nothing paired up, and the error showed the flattened shape.</p>
 <figure><img src="../../../images/tfs-d11/twelve.jpg" alt="The block flattened into 12 numbered rows next to the error" loading="lazy" width="1280" height="720"><figcaption>12 = 3 × 4: sentences × tokens, flattened.</figcaption></figure>
 
-<h2 id="gpt">Where you meet this: GPT-2</h2>
-<p>Three sentences ("The cat sat on", "My dog" padded, "Once upon a time") become a <code>[3, 4]</code> table of token IDs. Each ID is swapped
-for its row of 768 numbers from the token table, giving the block <code>[3, 4, 768]</code>: sheets are sentences, rows are tokens.
-The model then multiplies that block by weight matrices: a real one from GPT-2's first layer is <code>[768, 64]</code>, and
-<code>[3, 4, 768] @ [768, 64] = [3, 4, 64]</code>. On the real model the loop, the flatten and <code>@</code> agree to within 1.2 × 10⁻⁶ (rounding).</p>
+<h2 id="gpt">Where blocks come from: text in GPT-2</h2>
+<p>So far the blocks were small made-up ones. In a language model they come straight from your text. Let's follow three real sentences
+through GPT-2: "The cat sat on", "My dog" and "Once upon a time".</p>
+<p>First the text is cut into <b>tokens</b>, and every token has an ID number: its row number in GPT-2's vocabulary of 50,257 tokens.
+All sentences in a batch must be the same length, so the short one is padded with a filler token (GPT-2 uses its end-of-text token,
+ID 50256). The result is a flat table of IDs, 3 sentences by 4 tokens, <code>[3, 4]</code>. Two dimensions, no maths yet.</p>
+<table class="ids"><thead><tr><th>sentence</th><th>token 0</th><th>token 1</th><th>token 2</th><th>token 3</th></tr></thead><tbody>
+<tr><td>0</td><td>The · <b>464</b></td><td>cat · <b>3797</b></td><td>sat · <b>3332</b></td><td>on · <b>319</b></td></tr>
+<tr><td>1</td><td>My · <b>3666</b></td><td>dog · <b>3290</b></td><td>pad · <b>50256</b></td><td>pad · <b>50256</b></td></tr>
+<tr><td>2</td><td>Once · <b>7454</b></td><td>upon · <b>2402</b></td><td>a · <b>257</b></td><td>time · <b>640</b></td></tr></tbody></table>
+<figure><img src="../../../images/tfs-d11/ids.jpg" alt="The [3, 4] table of token IDs" loading="lazy" width="1280" height="720"><figcaption>The flat <code>[3, 4]</code> table of IDs: rows are sentences, columns are tokens.</figcaption></figure>
+
+<h2 id="lookup">GPT-2 looks each ID up</h2>
+<p>A number like 464 means nothing to the model by itself. GPT-2 keeps a big <b>token table</b>, <code>wte</code>, with one row of 768 numbers for
+every token it knows: <code>[50257, 768]</code>. The ID just says which row to copy. ID 464 ("The")? Copy row 464, which starts
+-0.069, -0.020, 0.064, -0.062 … and goes on for 768 numbers. In GPT-2's code this is literally a lookup: the table is an
+<code>nn.Embedding</code>, and <code>wte(ids)</code> copies one row per ID.</p>
+<figure><img src="../../../images/tfs-d11/copy.jpg" alt="ID 464 picking row 464 out of the token table" loading="lazy" width="1280" height="720"><figcaption>ID 464 copies row 464 of the <code>[50257, 768]</code> token table.</figcaption></figure>
+<p>Do that for every ID and the flat table grows a third dimension. Each sentence becomes its own sheet, each token a row, and each row
+is 768 numbers wide: <code>[3, 4]</code> → <code>[3, 4, 768]</code>. That's the block from the first half of this page. It's the same picture as before:
+depth is the batch (sentences), rows are tokens, and the 768 numbers run sideways.</p>
 <figure><img src="../../../images/tfs-d11/gpt-block.jpg" alt="The [3, 4, 768] block built from three real sentences" loading="lazy" width="1280" height="720"><figcaption>Depth = sentences, rows = tokens, sideways = the 768 numbers.</figcaption></figure>
 
-<h2 id="lookup">A lookup is a matrix multiplication</h2>
-<p>Building that block is itself the same rule. Write each ID as a <b>one-hot row</b>: 50,257 slots (one per token GPT-2 knows), a 1 in the
-ID's slot and 0 everywhere else. In code that's one line, <code>F.one_hot(ids, num_classes=50257)</code>, and it turns <code>[3, 4]</code> into
-<code>[3, 4, 50257]</code>. Times the token table <code>[50257, 768]</code>: the 50,257s meet and out comes <code>[3, 4, 768]</code>.</p>
-<figure><img src="../../../images/tfs-d11/onehot.jpg" alt="ID 464 written as a one-hot row of 50,257 slots" loading="lazy" width="1280" height="720"><figcaption>ID 464: a 1 in slot 464, 50,256 zeros.</figcaption></figure>
-<figure><img src="../../../images/tfs-d11/code.jpg" alt="The F.one_hot line and the [3, 4] → [3, 4, 50257] shape" loading="lazy" width="1280" height="720"><figcaption><code>[3, 4]</code> → <code>[3, 4, 50257]</code>, before any multiplication.</figcaption></figure>
-<p>Inside, each slot multiplies its whole row of the table. The 50,256 zeros wipe out their rows; the single 1 keeps row 464. Adding
-everything up leaves exactly row 464, the same 768 numbers the lookup copies. On the real model the difference is <b>0.0</b>.
-The code still just copies, because the multiplication costs 38,597,376 multiply-adds per token, almost all times zero, against 768
-numbers copied.</p>
+<h2 id="as-matmul">The same lookup, written as a matrix multiplication</h2>
+<p>Here's the nice part: that copying step can also be written as a matrix multiplication, and it follows exactly the rule from this
+page. Nothing about GPT-2 changes; it's a second way to describe the same step.</p>
+<p>First, write every ID differently. Take ID 464 and make a row of 50,257 slots, one for every token GPT-2 knows. Put a 1 in slot 464
+and a 0 everywhere else: 50,256 zeros and a single one. That's called a <b>one-hot row</b>.</p>
+<figure><img src="../../../images/tfs-d11/onehot.jpg" alt="ID 464 written as a one-hot row of 50,257 slots" loading="lazy" width="1280" height="720"><figcaption>ID 464: a 1 in slot 464, zeros everywhere else.</figcaption></figure>
+<p>Do that for every ID and the <code>[3, 4]</code> table becomes a block of one-hot rows: 3 sentences, 4 tokens, 50,257 slots each,
+<code>[3, 4, 50257]</code>. In PyTorch that's a single line, and it happens before any multiplication:</p>
+<pre><code>oh = F.one_hot(ids, num_classes=50257)   # [3, 4]  →  [3, 4, 50257]</code></pre>
+<figure><img src="../../../images/tfs-d11/code.jpg" alt="The F.one_hot line and the [3, 4] → [3, 4, 50257] shape" loading="lazy" width="1280" height="720"><figcaption><code>[3, 4]</code> goes in, <code>[3, 4, 50257]</code> comes out.</figcaption></figure>
+<p>Now multiply that block by the token table: <code>[3, 4, 50257] @ [50257, 768]</code>. Last meets first: the 50,257s meet and disappear,
+and out comes <code>[3, 4, 768]</code>, the same shape the lookup gave.</p>
+<p>Why are the numbers the same too? Look at one token. Stand its one-hot row next to the table, so every slot lines up with one row
+of the table. Each slot multiplies its whole row. The 50,256 slots that hold a 0 wipe their rows out. The single 1 sits next to row 464,
+so that row survives. Add everything up and what's left is exactly row 464: the same 768 numbers the lookup copied. Every other token
+does the same, each picking out its own row. On the real model, the multiplication and the lookup give identical blocks: the
+largest difference is <b>0.0</b>.</p>
 <figure><img src="../../../images/tfs-d11/inside.jpg" alt="The one-hot row standing beside the token table, row 464 surviving" loading="lazy" width="1280" height="720"><figcaption>Slot for row: only the row beside the 1 survives.</figcaption></figure>
 
+<h2 id="why-lookup">So why does GPT-2 look up instead?</h2>
+<p>Cost. As a multiplication, every token takes 50,257 × 768 = <b>38,597,376</b> multiply-adds, and almost all of them are something times
+zero. The lookup gets the same answer by copying <b>768</b> numbers, about 50,000 times less work. Same answer, so the code takes the
+shortcut.</p>
+<p>The multiplication view is still worth having in your head: it means the very first step of the model, from IDs to the block, is the
+same kind of operation as everything after it.</p>
+
+<h2 id="weights">What comes after: weight matrices</h2>
+<p>From here on the model multiplies the block by weight matrices. Here's a real one from GPT-2's first layer, <code>[768, 64]</code> (the first
+64 query columns of attention). <code>[3, 4, 768] @ [768, 64]</code>: the 768s meet, and out comes <code>[3, 4, 64]</code>. Every token of every
+sentence, multiplied by the same weights, in one go. The first numbers of the first token come out as -1.32, 2.97, 3.55, -3.27 ….</p>
+<figure><img src="../../../images/tfs-d11/weights.jpg" alt="The block multiplied by a real [768, 64] weight matrix" loading="lazy" width="1280" height="720"><figcaption><code>[3, 4, 768] @ [768, 64] → [3, 4, 64]</code>, with GPT-2's real weights.</figcaption></figure>
+<p>I ran this on the real model: the loop over sentences, the flatten and the plain <code>@</code> all agree, to within 1.2 × 10⁻⁶ (rounding).
+(In the full model, position rows are added to the block and it's normalised before this multiplication. The shapes don't change,
+so the rule doesn't either.)</p>
+<p>And now the error from the start reads itself. The last size of the block, 768, has to meet the first size of the matrix. Flip
+W to <code>W.T</code> and that first size is 64. They don't match, so PyTorch stops, and reports the block in its flattened form,
+<code>12x768</code>.</p>
+
 <h2 id="both">When both sides are blocks</h2>
-<p>With <code>[B, T, 64] @ [B, 64, T]</code>, sheet 0 meets sheet 0, sheet 1 meets sheet 1, and the result is <code>[B, T, T]</code>. That's how
-attention scores are computed (Episode 2). The front sizes are the batch dimensions: strictly, PyTorch needs them to be
-<b>broadcastable</b>, which means equal, 1, or missing on one side.</p>
+<p>Sometimes both sides are blocks: <code>[B, T, 64] @ [B, 64, T]</code>. Then sheet 0 meets sheet 0, sheet 1 meets sheet 1, and the result is
+<code>[B, T, T]</code>. That's exactly how attention scores are computed (Episode 2). The front sizes are the batch dimensions: strictly,
+PyTorch needs them to be <b>broadcastable</b>, which means equal, 1, or missing on one side.</p>
 
 <h2 id="rule">The whole rule</h2>
 <figure><img src="../../../images/tfs-d11/rule.jpg" alt="The rule card" loading="lazy" width="1280" height="720"><figcaption>Last meets first; the front comes along; a lookup is one-hot @ table.</figcaption></figure>
