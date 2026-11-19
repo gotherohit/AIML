@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>3-D matrix multiplication, finally visual</title>
+<meta name="description" content="What [B, T, K] @ [K, N] actually does, where the 12 in PyTorch&#x27;s shape error comes from, and why a lookup is a one-hot matrix multiplication. Real GPT-2 numbers.">
+<link rel="canonical" href="https://gotherohit.github.io/AIML/series/transformers-from-scratch/d1-1-3d-matrix-multiplication/">
+<meta property="og:type" content="article"><meta property="og:title" content="3-D matrix multiplication, finally visual">
+<meta property="og:description" content="What [B, T, K] @ [K, N] actually does, where the 12 in PyTorch&#x27;s shape error comes from, and why a lookup is a one-hot matrix multiplication. Real GPT-2 numbers."><meta property="og:url" content="https://gotherohit.github.io/AIML/series/transformers-from-scratch/d1-1-3d-matrix-multiplication/">
+<meta property="og:image" content="https://gotherohit.github.io/AIML/images/covers/tfs-d11.jpg"><meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x2='1' y2='1'%3E%3Cstop stop-color='%2335d6c0'/%3E%3Cstop offset='1' stop-color='%23ff6a2b'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../../assets/site.css"><style>:root{--accent:#5eead4;--accent2:#fbbf24}.prose h2 .n{display:block;font:700 12.5px var(--mono);color:var(--accent);letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px}.prose h2 .n.deeper{color:var(--accent2)}.ep{--bg:#0b1020;--card:#121a33;--ink:#e6ebff;--dim:#94a0c6;--teal:#5eead4;--amber:#fbbf24;--blue:#22d3ee;--org:#f59e0b}.ep canvas{max-width:none;margin:0;border:0;border-radius:0;background:none}.ep canvas#heat{max-width:340px;margin:8px auto;border-radius:8px}.ep table.mat,.ep table.idgrid{width:auto}.ep table.mat td,.ep table.idgrid td{padding:4px 7px}.ep .facts{margin:14px 0}.ep .sec>table{display:block;overflow-x:auto}.ep{--bg:#0b1020;--card:#121a33;--ink:#e6ebff;--dim:#94a0c6;--teal:#5eead4;--amber:#fbbf24;--blue:#22d3ee;--org:#f59e0b}
+.ep *{box-sizing:border-box}
+.ep .tag{font-size:11px;text-transform:uppercase;letter-spacing:.06em;padding:2px 7px;border-radius:99px;margin-right:8px;vertical-align:2px}
+.ep .tag.core{background:#134e4a;color:var(--teal)}
+.ep .tag.deeper{background:#4a3410;color:var(--amber)}
+.ep .mono,.ep .vec,.ep table.mat td,.ep table.add td{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
+.ep .chips{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+.ep .chip{display:inline-flex;flex-direction:column;align-items:center;background:#0b1020;border:1px solid var(--teal);border-radius:10px;padding:6px 12px}
+.ep .chip i{font-style:normal;font-size:18px}
+.ep .chip b{color:var(--amber);font-family:ui-monospace,monospace;font-size:14px}
+.ep .sp{color:var(--amber);font-weight:700}
+.ep table.rows td{overflow-x:auto}
+.ep .vec{font-size:12.5px;white-space:nowrap}
+.ep table.mat{width:auto;display:inline-table;margin:0}
+.ep table.mat td{border:1px solid #2a3870;text-align:center;min-width:30px;padding:4px 7px}
+.ep table.mat td.hl{background:#4a3410;color:var(--amber)}
+.ep table.mat td.one{background:#134e4a;color:var(--teal)}
+.ep .mm{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 0}
+.ep .mm span{font-size:22px;color:var(--dim)}
+.ep table.add td{text-align:right;font-size:13px}
+.ep table.add tr.tot td{color:var(--amber);font-weight:700}
+.ep .shape{background:#0b1020;border-left:3px solid var(--amber);padding:9px 12px;border-radius:6px;margin:10px 0;font-size:15px}
+.ep .note{color:var(--dim);font-size:14.5px}
+.ep .check{background:#0d3b2e;color:#86efac;padding:9px 12px;border-radius:8px}
+.ep .facts th{width:55%}
+.ep .map{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0}
+.ep .map span{background:#0b1020;border:1px solid #2a3870;border-radius:8px;padding:5px 9px;font-size:13.5px;color:var(--dim)}
+.ep .map span.on{border-color:var(--teal);color:var(--teal);font-weight:700}
+.ep .nbs{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:560px){.ep .nbs{grid-template-columns:1fr}}
+.ep .nbox{background:#0b1020;border-radius:10px;padding:10px}
+.ep .nb{display:grid;grid-template-columns:80px 1fr 38px;align-items:center;gap:6px;font-size:13.5px;margin:3px 0}
+.ep .nb i{height:9px;background:linear-gradient(90deg,var(--teal),var(--blue));border-radius:5px}
+.ep .nb b{font-family:ui-monospace,monospace;color:var(--amber);font-size:12.5px}
+.ep canvas#heat{width:100%;max-width:340px;image-rendering:pixelated;border-radius:8px;display:block;margin:8px auto}
+.ep #scene{position:relative;height:380px;border-radius:12px;overflow:hidden;touch-action:none;background:#0b1020}
+.ep #scene canvas{width:100%;height:100%;display:block}
+.ep #scene-labels{position:absolute;inset:0;pointer-events:none}
+.ep .lab{position:absolute;left:0;top:0;font-size:12px;white-space:nowrap;color:var(--ink);background:#0b1020cc;padding:2px 6px;border-radius:5px}
+.ep .lab.t{color:var(--teal)}
+.ep .lab.p{color:var(--amber)}
+.ep .lab.row i{font-style:normal;color:var(--teal)}
+.ep .lab.x b,.ep .lab.t b,.ep .lab.p b{font-family:ui-monospace,monospace}
+.ep #scene-steps{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:10px 0 0}
+.ep #scene-steps button{background:#0b1020;color:var(--dim);border:1px solid #2a3870;border-radius:8px;padding:9px 4px;font-size:13.5px}
+.ep #scene-steps button.on{border-color:var(--amber);color:var(--amber)}
+.ep .gridwrap{overflow-x:auto}
+.ep table.idgrid{width:auto;font-size:12.5px}
+.ep table.idgrid td{border:1px solid #2a3870;text-align:center;padding:4px 6px;min-width:58px}
+.ep table.idgrid td b{display:block;color:var(--amber);font-family:ui-monospace,monospace;font-weight:500}
+.ep table.idgrid td i{font-style:normal}
+.ep table.idgrid td.pad{background:#1a2036;color:#6b7699}
+.ep table.idgrid td.pad b{color:#6b7699}
+.ep .eot{color:#c4b5fd;font-size:11px}
+.ep .chip .nl{color:#c4b5fd;font-size:13px}
+.ep table.mat.mask td{min-width:26px}
+.ep #bscene{position:relative;height:470px;border-radius:12px;overflow:hidden;touch-action:none;background:#0b1020}
+.ep #bscene canvas{width:100%;height:100%;display:block}
+.ep #bscene-labels{position:absolute;inset:0;pointer-events:none}
+.ep .lab.id{font-size:12px;background:#0b1020e6;border:1px solid #1e2a52;color:#fde68a;font-family:ui-monospace,monospace}
+.ep .lab.id i{font-style:normal;color:#e6ebff;font-family:system-ui,sans-serif;margin-right:4px}
+.ep .lab.padl,.ep .lab.padl i{color:#8a94b8}
+.ep .lab.sheet{font-size:13px;font-weight:700;color:var(--teal);background:#0b1020f0}
+.ep .lab.axis{font-size:13px;font-weight:700;color:#c4b5fd;background:#0b1020f0;border:1px solid #4c3f8f}
+.ep .lab.axis small{font-weight:400;color:#d8d2ff}
+.ep .lab.posl{font-size:12px;color:var(--amber);background:#0b1020e6;border:1px solid #4a3410}
+.ep .lab.posh{font-size:13px;font-weight:700;color:var(--amber);background:#0b1020f0}
+.ep .lab.shape{font-size:15px;color:var(--amber);background:#0b1020f0;border:1px solid #fbbf24}
+.ep #bscene-mode,.ep #bscene-steps{display:grid;gap:6px;margin:8px 0}
+.ep #bscene-mode{grid-template-columns:1fr 1fr}
+.ep #bscene-steps{grid-template-columns:repeat(3,1fr)}
+.ep #bscene-mode button,.ep #bscene-steps button{background:#0b1020;color:var(--dim);border:1px solid #2a3870;border-radius:8px;padding:8px 3px;font-size:12.5px}
+.ep #bscene-mode button.on{border-color:var(--teal);color:var(--teal)}
+.ep #bscene-steps button.on{border-color:var(--amber);color:var(--amber)}
+.ep .mm3row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:10px 0}
+.ep .mm3row>span{font-size:20px;color:var(--dim)}
+.ep .m3{display:flex;flex-direction:column;gap:4px;font-size:13px}
+.ep .m3>b{color:var(--teal);font-family:ui-monospace,monospace;font-weight:500}
+.ep .sh3{display:flex;flex-direction:column;gap:2px}
+.ep .sh3 small{color:var(--dim);font-size:11px}
+.ep .m3 table.mat td{min-width:24px;padding:3px 5px}
+.ep #mscene{position:relative;height:470px;border-radius:12px;overflow:hidden;touch-action:none;background:#0b1020}
+.ep #mscene canvas{width:100%;height:100%;display:block}
+.ep #mscene-labels{position:absolute;inset:0;pointer-events:none}
+.ep .num{position:absolute;left:0;top:0;font:600 13px ui-monospace,Consolas,monospace;color:#fff;text-shadow:0 0 3px #000}
+.ep .num.hi{color:#0b1020;text-shadow:none;background:#fde68a;border-radius:4px;padding:0 3px}
+.ep .lab.mx,.ep .lab.mw,.ep .lab.my{font-size:12.5px;color:var(--teal);background:#0b1020f0;text-align:center}
+.ep .lab.mw{color:var(--amber)}
+.ep .lab.ms{font-size:12px;color:var(--dim);background:transparent}
+.ep .lab.mshape{font-size:14px;color:var(--amber);background:#0b1020f0;border:1px solid #fbbf24}
+.ep #mscene-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:8px 0}
+.ep #mscene-steps button{background:#0b1020;color:var(--dim);border:1px solid #2a3870;border-radius:8px;padding:8px 3px;font-size:12.5px}
+.ep #mscene-steps button.on{border-color:var(--amber);color:var(--amber)}
+.ep .qbox{background:#0b1020;border:1px solid #4c3f8f;border-radius:10px;padding:10px 12px;margin:12px 0}
+.ep .qbox>b{color:#c4b5fd}
+.ep table.mat.lk th{color:var(--dim);font-size:11px;padding:2px 6px 2px 0;border:none}
+.ep .facts.shp th{width:20%;white-space:nowrap}
+.ep table.trace td{font-family:ui-monospace,monospace;font-size:12.5px;white-space:nowrap}
+.ep table.trace th{font-size:12px}
+.ep table.rv tr.on td{color:var(--amber);font-weight:700}
+.ep table.rv tr.tot td{border-top:2px solid var(--amber)}
+.ep .arch{background:#0b1020;border-radius:12px;padding:8px 4px 4px}
+.ep .archsvg{width:100%;max-width:460px;display:block;margin:auto;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.ep .ad-p rect,.ep .ad-p circle{fill:#121a33;stroke:#2a3870;stroke-width:1.2}
+.ep .ad-p{cursor:pointer}
+.ep .ad-p:focus{outline:none}
+.ep .ad-p.ad-on rect,.ep .ad-p.ad-on circle{fill:#3a2a08;stroke:#fbbf24;stroke-width:2}
+.ep .ad-p.ad-sel rect,.ep .ad-p.ad-sel circle{stroke:#5eead4;stroke-width:2.4}
+.ep .ad-l{fill:#e6ebff;font-size:13px;font-weight:600;text-anchor:middle}
+.ep .ad-on .ad-l{fill:#fde68a}
+.ep .ad-s{fill:#94a0c6;font-size:10.5px;text-anchor:middle;font-family:ui-monospace,Consolas,monospace}
+.ep .ad-sn{font-size:9.5px}
+.ep .ad-plus{fill:#e6ebff;font-size:17px;text-anchor:middle;font-weight:700}
+.ep .ad-tag{fill:#94a0c6;font-size:10px}
+.ep .ad-on .ad-tag{fill:#fbbf24;font-weight:700}
+.ep .ad-a{stroke:#4b5a8f;stroke-width:1.4}
+.ep .ad-ah{fill:#4b5a8f}
+.ep .ad-res{stroke-dasharray:4 3}
+.ep .ad-rt{font-style:italic}
+.ep .ad-tr{fill:#e6ebff;font-size:11.5px}
+.ep .ad-on .ad-tr{fill:#fde68a;font-weight:700}
+.ep .ad-sh{fill:#5eead4;font-size:10px;font-family:ui-monospace,Consolas,monospace}
+.ep .ad-loop{fill:none;stroke:#5eead4;stroke-opacity:.45;stroke-dasharray:6 4}
+.ep .ad-loop.ad-on{stroke:#fbbf24;stroke-opacity:.9}
+.ep .ad-lt{fill:#5eead4;font-size:11px;font-weight:600}
+.ep .ad-mode{display:flex;gap:6px;align-items:center;justify-content:center;font-size:13px;color:#94a0c6;margin:2px 0 6px;flex-wrap:wrap}
+.ep .ad-mode button{background:#121a33;color:#94a0c6;border:1px solid #2a3870;border-radius:99px;padding:4px 10px;font-size:12.5px}
+.ep .ad-mode button.on{border-color:#5eead4;color:#5eead4}
+.ep .ad-cap{min-height:3.2em;color:#e6ebff;font-size:14.5px;padding:8px 10px;margin:6px 0 0;background:#121a33;border-radius:8px}.prose figure{margin:22px 0}.prose figure img{width:100%;height:auto;border-radius:12px;border:1px solid var(--line);display:block}.prose figcaption{color:var(--fg2);font-size:14.5px;margin-top:6px}</style>
+</head><body>
+<header class="topbar"><div class="in">
+<a class="brand" href="../../../"><span class="mark">RK</span><span class="name">Rohit Kumar Singh</span></a>
+<div class="search" role="search"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 3a7.5 7.5 0 0 1 5.9 12.1l4.8 4.8-1.4 1.4-4.8-4.8A7.5 7.5 0 1 1 10.5 3zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11z"/></svg>
+<input id="q" type="search" placeholder="Search explainers" aria-label="Search the explainers" autocomplete="off" data-root="../../../"><kbd>/</kbd>
+<div class="results" id="qres" role="listbox" hidden></div></div>
+<nav><a class="txt" href="../../../#series">Series</a><a class="txt" href="../../../#explainers">Explainers</a><a class="txt" href="../../../#projects">Projects</a><a class="txt" href="../../../#about">About</a>
+<a class="icon" data-channel target="_blank" rel="noopener" aria-label="YouTube"><svg viewBox="0 0 24 24"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.6 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg></a>
+<a class="icon" href="https://www.linkedin.com/in/rohit-kumar-singh-621818a9/" target="_blank" rel="noopener" aria-label="LinkedIn"><svg viewBox="0 0 24 24"><path d="M20.4 20.5h-3.6v-5.6c0-1.3 0-3-1.8-3s-2.1 1.4-2.1 2.9v5.7H9.3V9h3.4v1.6h.1c.5-.9 1.6-1.8 3.4-1.8 3.6 0 4.3 2.4 4.3 5.5v6.2zM5.3 7.4a2.1 2.1 0 1 1 0-4.1 2.1 2.1 0 0 1 0 4.1zM7.1 20.5H3.5V9h3.6v11.5zM22.2 0H1.8C.8 0 0 .8 0 1.7v20.6c0 .9.8 1.7 1.8 1.7h20.4c1 0 1.8-.8 1.8-1.7V1.7C24 .8 23.2 0 22.2 0z"/></svg></a>
+<a class="icon" href="https://github.com/gotherohit/AIML" target="_blank" rel="noopener" aria-label="GitHub"><svg viewBox="0 0 24 24"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.3-3.1-.2-.4-.6-1.6 0-3.2 0 0 1-.3 3.4 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.2.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.5.4.9 1.1.9 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"/></svg></a></nav>
+</div></header>
+<div class="article-head">
+<div class="crumbs"><a href="../../../#series">Series</a> / <a href="../">Transformers from scratch</a> /</div>
+<h1>3-D matrix multiplication, finally visual</h1>
+<p class="dek">Inside every language model, the things being multiplied are 3-D blocks. Here's the one rule that tells you what comes out, shown in 3-D with the real GPT-2.</p>
+<div class="tags" style="margin-bottom:16px"><span class="tag">Matrix multiplication</span><span class="tag">PyTorch</span><span class="tag">GPT-2</span><span class="tag">Deep dive D1.1</span></div>
+<div class="byline"><span class="kind series">Series</span><span>By <b>Rohit Kumar Singh</b></span><span>November 2026</span><span>4 min read</span></div>
+</div>
+<div class="videos"><div class="yt" data-video="tfs-d11" data-soon data-label="Deep dive D1.1 · 9 min" data-title="3-D Matrix Multiplication, Finally Visual" data-cover="../../../images/covers/tfs-d11-player.jpg"></div></div>
+<div class="layout">
+<details class="toc"><summary>Contents</summary><ol><li><a href="#question">The question</a></li><li><a href="#flat">Two dimensions, one picture</a></li><li><a href="#block">Add a dimension</a></li><li><a href="#three">Three ways, and where the 12 comes from</a></li><li><a href="#gpt">Where you meet this: GPT-2</a></li><li><a href="#lookup">A lookup is a matrix multiplication</a></li><li><a href="#both">When both sides are blocks</a></li><li><a href="#rule">The whole rule</a></li></ol></details>
+<article class="prose">
+<div class="box key"><b>The rule</b><code>[B, T, K] @ [K, N] = [B, T, N]</code>. The last size of the left meets the first size of the
+right and disappears; everything in front comes along. <a href="https://colab.research.google.com/github/gotherohit/llm-scratch/blob/main/ch01-text-to-vectors/llm_scratch_ch01.ipynb">Try every example in Colab</a> (sections 1.0, 1.4, 1.11, 1.12).</div>
+
+<h2 id="question">The question</h2>
+<p>You know how to multiply two matrices: rows times columns. But inside a language model the things being multiplied are 3-D blocks,
+like <code>[3, 4, 768]</code>. What does block <code>@</code> matrix mean, and what shape comes out? Here's the same question as PyTorch
+asks it. A <code>[3, 4, 768]</code> block times a <code>[768, 64]</code> matrix works. Flip the matrix and it fails:</p>
+<pre><code>RuntimeError: mm: mat1 and mat2 shapes cannot be multiplied (12x768 and 64x768)</code></pre>
+<p>My block was 3 by 4 by 768. So where did <b>12</b> come from?</p>
+<figure><img src="../../../images/tfs-d11/error.jpg" alt="The PyTorch error with the 12 highlighted" loading="lazy" width="1280" height="720"><figcaption>The real error, from multiplying GPT-2's own weights the wrong way round.</figcaption></figure>
+
+<h2 id="flat">Two dimensions, one picture</h2>
+<p>A is <code>[2, 3]</code>, B is <code>[3, 2]</code>. One number of the answer = one row of A paired with one column of B: multiply the pairs,
+add them up. Row 0 of A is (1, 2, 0), column 0 of B is (2, 0, 1): 1×2 + 2×0 + 0×1 = <b>2</b>. That's a dot product, the only operation in
+matrix multiplication. Doing it for every row and column gives C = [[2, 3], [3, 13]].</p>
+<figure><img src="../../../images/tfs-d11/dot.jpg" alt="A row of A and a column of B meet at their cell of C" loading="lazy" width="1280" height="720"><figcaption>Every row of A meets every column of B; each meeting is one number.</figcaption></figure>
+<p>The row of A and the column of B both have 3 numbers, so they can pair up. That's the whole shape rule:
+<code>[2, 3] @ [3, 2] → [2, 2]</code>. The inner sizes meet and disappear, the outer sizes are what's left.</p>
+
+<h2 id="block">Add a dimension</h2>
+<p>Now X is <code>[2, 3, 4]</code>: two sheets, each an ordinary 3 × 4 matrix. Multiply by W <code>[4, 2]</code>: each sheet is multiplied by W
+on its own, the same W for both. Each sheet gives a 3 × 2 answer; stacked, that's <code>[2, 3, 2]</code>. The last size of X (4) meets the first
+size of W (4) and disappears, W's 2 goes on the end, and the 2 in front is just the number of sheets: it comes along.</p>
+<figure><img src="../../../images/tfs-d11/block.jpg" alt="Two sheets of X, each multiplied by the same W" loading="lazy" width="1280" height="720"><figcaption><code>[2, 3, 4] @ [4, 2] → [2, 3, 2]</code>: one flat multiplication per sheet.</figcaption></figure>
+
+<h2 id="three">Three ways, and where the 12 comes from</h2>
+<p>A loop over the sheets, flattening both sheets into one tall <code>[6, 4]</code> matrix, and plain <code>X @ W</code> all give exactly the
+same numbers. Flattening is closest to what the computer does, because every row is multiplied by the same W anyway.</p>
+<p>That's the 12. PyTorch flattened my <code>[3, 4, 768]</code> block the same way: 3 sheets of 4 rows = <b>12 rows</b> of 768. Then it tried to
+multiply them by a <code>[64, 768]</code> matrix: the 768 met a 64, nothing paired up, and the error showed the flattened shape.</p>
+<figure><img src="../../../images/tfs-d11/twelve.jpg" alt="The block flattened into 12 numbered rows next to the error" loading="lazy" width="1280" height="720"><figcaption>12 = 3 × 4: sentences × tokens, flattened.</figcaption></figure>
+
+<h2 id="gpt">Where you meet this: GPT-2</h2>
+<p>Three sentences ("The cat sat on", "My dog" padded, "Once upon a time") become a <code>[3, 4]</code> table of token IDs. Each ID is swapped
+for its row of 768 numbers from the token table, giving the block <code>[3, 4, 768]</code>: sheets are sentences, rows are tokens.
+The model then multiplies that block by weight matrices: a real one from GPT-2's first layer is <code>[768, 64]</code>, and
+<code>[3, 4, 768] @ [768, 64] = [3, 4, 64]</code>. On the real model the loop, the flatten and <code>@</code> agree to within 1.2 × 10⁻⁶ (rounding).</p>
+<figure><img src="../../../images/tfs-d11/gpt-block.jpg" alt="The [3, 4, 768] block built from three real sentences" loading="lazy" width="1280" height="720"><figcaption>Depth = sentences, rows = tokens, sideways = the 768 numbers.</figcaption></figure>
+
+<h2 id="lookup">A lookup is a matrix multiplication</h2>
+<p>Building that block is itself the same rule. Write each ID as a <b>one-hot row</b>: 50,257 slots (one per token GPT-2 knows), a 1 in the
+ID's slot and 0 everywhere else. In code that's one line, <code>F.one_hot(ids, num_classes=50257)</code>, and it turns <code>[3, 4]</code> into
+<code>[3, 4, 50257]</code>. Times the token table <code>[50257, 768]</code>: the 50,257s meet and out comes <code>[3, 4, 768]</code>.</p>
+<figure><img src="../../../images/tfs-d11/onehot.jpg" alt="ID 464 written as a one-hot row of 50,257 slots" loading="lazy" width="1280" height="720"><figcaption>ID 464: a 1 in slot 464, 50,256 zeros.</figcaption></figure>
+<figure><img src="../../../images/tfs-d11/code.jpg" alt="The F.one_hot line and the [3, 4] → [3, 4, 50257] shape" loading="lazy" width="1280" height="720"><figcaption><code>[3, 4]</code> → <code>[3, 4, 50257]</code>, before any multiplication.</figcaption></figure>
+<p>Inside, each slot multiplies its whole row of the table. The 50,256 zeros wipe out their rows; the single 1 keeps row 464. Adding
+everything up leaves exactly row 464, the same 768 numbers the lookup copies. On the real model the difference is <b>0.0</b>.
+The code still just copies, because the multiplication costs 38,597,376 multiply-adds per token, almost all times zero, against 768
+numbers copied.</p>
+<figure><img src="../../../images/tfs-d11/inside.jpg" alt="The one-hot row standing beside the token table, row 464 surviving" loading="lazy" width="1280" height="720"><figcaption>Slot for row: only the row beside the 1 survives.</figcaption></figure>
+
+<h2 id="both">When both sides are blocks</h2>
+<p>With <code>[B, T, 64] @ [B, 64, T]</code>, sheet 0 meets sheet 0, sheet 1 meets sheet 1, and the result is <code>[B, T, T]</code>. That's how
+attention scores are computed (Episode 2). The front sizes are the batch dimensions: strictly, PyTorch needs them to be
+<b>broadcastable</b>, which means equal, 1, or missing on one side.</p>
+
+<h2 id="rule">The whole rule</h2>
+<figure><img src="../../../images/tfs-d11/rule.jpg" alt="The rule card" loading="lazy" width="1280" height="720"><figcaption>Last meets first; the front comes along; a lookup is one-hot @ table.</figcaption></figure>
+<p>If a multiplication ever crashes, check those two sizes: the last of the left and the first of the right. For the full walk-through
+with every number, see <a href="../01-text-to-vectors/#mm3">the Episode 1 article</a>.</p>
+<h2 id="sources">Sources</h2><ul class="sources">
+<li>PyTorch documentation, <a href="https://pytorch.org/docs/stable/generated/torch.matmul.html">torch.matmul</a> (batched multiplication and broadcasting) and <a href="https://pytorch.org/docs/stable/generated/torch.nn.functional.one_hot.html">torch.nn.functional.one_hot</a></li>
+<li>Radford et al. 2019, <a href="https://cdn.openai.com/better-language-models/language_models_are_unsupervised_multitask_learners.pdf">Language Models are Unsupervised Multitask Learners</a> (GPT-2)</li>
+<li>Experiments: GPT-2 small (openai-community/gpt2) with Hugging Face Transformers and PyTorch 2.15 on CPU; every number on this page comes from those runs</li>
+</ul>
+<div class="endcard"><h3><span data-live="tfs-d11" data-live-text="Watch deep dive D1.1">Video coming soon</span></h3><p><span data-live="tfs-d11" data-live-text="Every step here, animated in 3-D with the real numbers.">The video is scheduled. Subscribe to get it when it's out.</span></p>
+<div class="actions"><a class="btn ytbtn" data-watch="tfs-d11" data-soon target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.6 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg>Watch on YouTube</a>
+<a class="btn" data-channel target="_blank" rel="noopener">Subscribe</a>
+<a class="btn" href="https://www.linkedin.com/in/rohit-kumar-singh-621818a9/" target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><path d="M20.4 20.5h-3.6v-5.6c0-1.3 0-3-1.8-3s-2.1 1.4-2.1 2.9v5.7H9.3V9h3.4v1.6h.1c.5-.9 1.6-1.8 3.4-1.8 3.6 0 4.3 2.4 4.3 5.5v6.2zM5.3 7.4a2.1 2.1 0 1 1 0-4.1 2.1 2.1 0 0 1 0 4.1zM7.1 20.5H3.5V9h3.6v11.5zM22.2 0H1.8C.8 0 0 .8 0 1.7v20.6c0 .9.8 1.7 1.8 1.7h20.4c1 0 1.8-.8 1.8-1.7V1.7C24 .8 23.2 0 22.2 0z"/></svg>Follow on LinkedIn</a></div></div>
+<a class="next" href="../01-text-to-vectors/"><span>Goes with</span><b>Episode 1: from text to vectors →</b></a>
+</article>
+</div>
+
+<footer class="site"><div class="in"><span>© 2026 Rohit Kumar Singh</span>
+<span><a href="https://www.linkedin.com/in/rohit-kumar-singh-621818a9/" target="_blank" rel="noopener">LinkedIn</a> · <a href="https://github.com/gotherohit/AIML" target="_blank" rel="noopener">GitHub</a> · <a href="mailto:rohitkrsingh2000@gmail.com">Email</a></span>
+<p class="ai-note"><b>About AI assistance:</b> the articles and code on this site are developed with the help of AI tools. Explanations are refined through in-depth conversations with AI, and code is written with AI assistance. Experiments are run for real, results come from that code, and claims are checked against the cited sources.</p></div></footer>
+<script src="../../../assets/site.js"></script>
+</body></html>
