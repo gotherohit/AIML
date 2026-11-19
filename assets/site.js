@@ -22,6 +22,7 @@ const VIDEOS = {
   "cu-short":  "https://youtube.com/shorts/YgH38crpeQw",                                          // AI can't see your screen. So how does it click?
   "cu-short2": "https://youtube.com/shorts/N_CIgDG8yOE",                                          // I set a trap for my own AI agent
   "tfs-ep01":  "https://youtu.be/IKFiXlc0k-k",                                                                          // Transformers from scratch, Ep 1 (long video): paste the link when it's uploaded
+  "tfs-d11":   "https://youtu.be/25GaBn2QYW4",                                                                        // Deep dive D1.1: 3-D matrix multiplication (scheduled; switches on by itself)
 };
 // ------------------------------------------------------------------------------------------
 

@@ -797,7 +797,7 @@ predict and pad positions are left out, so their rows get zero too. Episodes 5 a
 <p>In GPT-2 that isn't the whole story: the same table is reused at the very top to score every word (Episode 4), and through that use
 every row gets a gradient on every step.</p>
 </div>
-<h2 id="mm3"><span class="n core">Core</span>Matrix multiplication with 3 dimensions</h2>
+<h2 id="mm3"><span class="n core">Core</span>Matrix multiplication with 3 dimensions</h2><div class="box key"><b>Deep dive video D1.1</b>This section has its own short video, with every shape in 3-D. <span data-live="tfs-d11" data-live-text="">It comes out soon.</span> <a class="btn ytbtn" data-watch="tfs-d11" data-soon target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.6 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg>Watch D1.1</a></div>
 <div class="sec">
 <p>A batch turns every table into a 3-D block like <code>[B, T, 768]</code>, and from Episode 2 on we multiply those blocks by weight
 matrices. The rule is the same 2-D multiplication you already know, done once per sheet.</p>
